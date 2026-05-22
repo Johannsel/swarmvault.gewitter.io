@@ -16,10 +16,9 @@ if [ -f /run/secrets/redis_password ]; then
 fi
 
 echo "[entrypoint] Running Prisma migrations..."
-# Use the locally installed prisma binary (pinned to v6 via package.json).
-# Never use bare `npx prisma` — it downloads the latest CLI at runtime and
-# Prisma 7+ has breaking schema changes incompatible with this project.
-/app/node_modules/.bin/prisma migrate deploy --schema=./prisma/schema.prisma
+# Use pnpm exec so pnpm resolves the prisma binary from @swarmvault/server's
+# own node_modules — never npx, which downloads the latest (incompatible) CLI.
+cd /app/packages/server && pnpm exec prisma migrate deploy --schema=./prisma/schema.prisma
 
 echo "[entrypoint] Starting SwarmVault server..."
 exec node dist/index.js
