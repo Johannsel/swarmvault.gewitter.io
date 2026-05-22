@@ -1,0 +1,33 @@
+# ── Secrets — must NEVER enter the Docker build context ───────────────────────
+.env
+.env.*
+!.env.*.example
+packages/server/.secrets/
+
+# ── Dependencies (rebuilt inside the container) ───────────────────────────────
+**/node_modules/
+**/.pnpm-store/
+.turbo/
+
+# ── Build outputs (rebuilt inside the container) ─────────────────────────────
+**/dist/
+**/*.tsbuildinfo
+
+# ── Desktop app (not part of the server image) ────────────────────────────────
+packages/desktop/
+
+# ── Test / coverage artifacts ─────────────────────────────────────────────────
+**/coverage/
+**/.nyc_output/
+
+# ── Git & editor files ────────────────────────────────────────────────────────
+.git/
+.github/
+.vscode/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# ── OS metadata ───────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db

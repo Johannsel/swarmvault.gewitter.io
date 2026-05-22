@@ -222,12 +222,14 @@ fastify.get("/ws", { websocket: true }, (socket, _request) => {
 
       // ── Chunk acknowledgement from node (upload path) ──────────────────
       if (msg.type === "chunk_ack") {
-        const { fileId, shardIndex, success } = msg.payload as {
+        const { fileId, shardIndex, ackNonce, success } = msg.payload as {
           fileId: string;
           shardIndex: number;
+          ackNonce: string;
           success: boolean;
         };
-        const key = `${fileId}:${shardIndex}`;
+        // Key includes the nonce so only the relay recipient can resolve the ack
+        const key = `${fileId}:${shardIndex}:${ackNonce}`;
         const resolve = pendingAcks.get(key);
         if (resolve) resolve(success as boolean);
         return;
@@ -235,12 +237,13 @@ fastify.get("/ws", { websocket: true }, (socket, _request) => {
 
       // ── Chunk response from node (download / retrieval path) ─────────────
       if (msg.type === "chunk_response") {
-        const { fileId, shardIndex, data } = msg.payload as {
+        const { fileId, shardIndex, requestNonce, data } = msg.payload as {
           fileId: string;
           shardIndex: number;
+          requestNonce: string;
           data: string | null;
         };
-        const key = `${fileId}:${shardIndex}`;
+        const key = `${fileId}:${shardIndex}:${requestNonce}`;
         const resolve = pendingChunkResponses.get(key);
         if (resolve) resolve(data ? Buffer.from(data, "base64") : null);
         return;
@@ -255,6 +258,13 @@ fastify.get("/ws", { websocket: true }, (socket, _request) => {
           usedBytes: number;
           pledgedBytes: number;
         };
+
+        // Reject heartbeats for a different node — prevents a malicious node from
+        // keeping another node alive (and gaming the reward/uptime system).
+        if (nodeId !== authenticatedNodeId) {
+          socket.send(JSON.stringify({ type: "error", payload: { message: "nodeId does not match authenticated connection" } }));
+          return;
+        }
 
         const node = await prisma.storageNode.findFirst({
           where: { id: nodeId, relayToken },

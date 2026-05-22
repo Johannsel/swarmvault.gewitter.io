@@ -29,6 +29,9 @@ RUN pnpm --filter @swarmvault/server build
 # ── Runtime stage ─────────────────────────────────────────────────────────────
 FROM node:20-bookworm-slim AS runtime
 
+# openssl is required by the Prisma query engine for libssl detection
+RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+
 RUN npm install -g pnpm@9
 
 WORKDIR /app

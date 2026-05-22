@@ -8,6 +8,7 @@
  */
 
 import type { WebSocket } from "@fastify/websocket";
+import { randomBytes } from "node:crypto";
 import { prisma } from "../database.js";
 
 /** How long (ms) to wait for a node to respond with a shard before giving up. */
@@ -72,7 +73,8 @@ export const retrievalService = {
       }
 
       const socket = nodeConnections.get(connectedNodeId)!;
-      const key = `${fileId}:${chunk.shardIndex}`;
+      const requestNonce = randomBytes(8).toString("hex");
+      const key = `${fileId}:${chunk.shardIndex}:${requestNonce}`;
 
       const responsePromise = new Promise<Buffer | null>((resolve) => {
         const timer = setTimeout(() => {
@@ -91,7 +93,7 @@ export const retrievalService = {
       socket.send(
         JSON.stringify({
           type: "chunk_request",
-          payload: { fileId, shardIndex: chunk.shardIndex },
+          payload: { fileId, shardIndex: chunk.shardIndex, requestNonce },
         }),
       );
 

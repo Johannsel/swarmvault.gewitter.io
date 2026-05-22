@@ -16,7 +16,10 @@ if [ -f /run/secrets/redis_password ]; then
 fi
 
 echo "[entrypoint] Running Prisma migrations..."
-npx prisma migrate deploy --schema=./prisma/schema.prisma
+# Use the locally installed prisma binary (pinned to v6 via package.json).
+# Never use bare `npx prisma` — it downloads the latest CLI at runtime and
+# Prisma 7+ has breaking schema changes incompatible with this project.
+/app/node_modules/.bin/prisma migrate deploy --schema=./prisma/schema.prisma
 
 echo "[entrypoint] Starting SwarmVault server..."
 exec node dist/index.js

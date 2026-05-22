@@ -19,6 +19,7 @@ services:
       NODE_ENV: production
       PORT: 3000
       HOST: 0.0.0.0
+      PUBLIC_URL: "https://api.swarmvault.gewitter.io"
       # DATABASE_URL and REDIS_URL are constructed by docker-entrypoint.sh
       # from the Docker secrets below — do not set them here.
       JWT_EXPIRY: "7d"

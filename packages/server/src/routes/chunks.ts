@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import type { WebSocket } from "@fastify/websocket";
 import type { Redis } from "ioredis";
 import { FastifyInstance } from "fastify";
@@ -47,8 +47,13 @@ export async function chunkRoutes(fastify: ChunkFastify): Promise<void> {
       return reply.status(400).send({ error: "Missing required X-* headers" });
     }
 
+    // Validate chunkHash is exactly 64 lowercase hex chars (SHA-256)
+    if (!/^[0-9a-f]{64}$/.test(chunkHash)) {
+      return reply.status(400).send({ error: "X-Chunk-Hash must be a 64-character lowercase hex SHA-256" });
+    }
+
     const shardIndex = Number(shardIndexRaw);
-    if (!Number.isInteger(shardIndex) || shardIndex < 0) {
+    if (!Number.isInteger(shardIndex) || shardIndex < 0 || shardIndex > 999) {
       return reply.status(400).send({ error: "X-Shard-Index must be a non-negative integer" });
     }
 
@@ -80,9 +85,10 @@ export async function chunkRoutes(fastify: ChunkFastify): Promise<void> {
       });
     }
 
-    // Register a pending-ack promise before sending, so the ack can't arrive
-    // before we're ready to receive it.
-    const ackKey = `${fileId}:${shardIndex}`;
+    // Generate a one-time nonce so only the node that receives THIS relay message
+    // can resolve the ack — prevents a malicious node from DoS-ing another node's upload.
+    const ackNonce = randomBytes(8).toString("hex");
+    const ackKey = `${fileId}:${shardIndex}:${ackNonce}`;
     const ackPromise = new Promise<boolean>((resolve) => {
       const timer = setTimeout(() => {
         fastify.pendingAcks.delete(ackKey);
@@ -105,6 +111,7 @@ export async function chunkRoutes(fastify: ChunkFastify): Promise<void> {
           shardIndex,
           chunkHash,
           isData,
+          ackNonce,
           data: body.toString("base64"),
         },
       }),

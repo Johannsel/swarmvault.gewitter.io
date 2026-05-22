@@ -10,6 +10,8 @@ const envSchema = z.object({
   JWT_EXPIRY: z.string().default("7d"),
   CHUNK_TEMP_DIR: z.string().default("/tmp/swarmvault-chunks"),
   REWARD_CRON: z.string().default("0 * * * *"),
+  /** Public-facing origin used when building share URLs. Set to https://api.swarmvault.gewitter.io in production. */
+  PUBLIC_URL: z.string().url().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

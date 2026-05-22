@@ -13,10 +13,10 @@ const createFileBody = z.object({
   // Accepted for backward-compatibility but ignored on the server.
   tier: z.enum(["vault", "swarm"]).optional(),
   contentHash: z.string().length(64), // hex SHA-256
-  totalShards: z.number().int().positive(),
-  parityShards: z.number().int().min(1),
+  totalShards: z.number().int().positive().max(100),
+  parityShards: z.number().int().min(1).max(50),
   /** Encrypted per-shard master key (base64url), stored encrypted server-side */
-  encryptedMasterKey: z.string(),
+  encryptedMasterKey: z.string().min(1).max(1024),
 });
 
 const claimFileBody = z.object({

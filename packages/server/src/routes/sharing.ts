@@ -18,6 +18,10 @@
 
 import { FastifyInstance } from "fastify";
 import { prisma } from "../database.js";
+import { config } from "../config.js";
+
+/** Maximum bytes accepted for a share upload (prevents server-side storage abuse). */
+const MAX_SHARE_BYTES = 50 * 1024 * 1024; // 50 MB
 
 const SHARE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
@@ -42,6 +46,9 @@ export async function sharingRoutes(fastify: FastifyInstance): Promise<void> {
     const data = (await request.body) as Buffer;
     if (!Buffer.isBuffer(data) || data.length === 0) {
       return reply.status(400).send({ error: "Empty or missing file body" });
+    }
+    if (data.length > MAX_SHARE_BYTES) {
+      return reply.status(413).send({ error: "Share payload too large (max 50 MB)" });
     }
     // Prisma's Bytes type requires Uint8Array<ArrayBuffer>. Copy into a fresh
     // ArrayBuffer so TypeScript is happy (Buffer.buffer is ArrayBufferLike).
@@ -83,7 +90,10 @@ export async function sharingRoutes(fastify: FastifyInstance): Promise<void> {
       });
     }
 
-    const shareUrl = `${request.protocol}://${request.hostname}/api/v1/share/${shared.token}`;
+    // Use the configured PUBLIC_URL so the share link is always correct even
+    // when the request comes through a reverse proxy with a spoofed Host header.
+    const origin = config.PUBLIC_URL ?? `${request.protocol}://${request.hostname}`;
+    const shareUrl = `${origin}/api/v1/share/${shared.token}`;
 
     return reply.status(existing ? 200 : 201).send({
       token: shared.token,
@@ -123,7 +133,8 @@ export async function sharingRoutes(fastify: FastifyInstance): Promise<void> {
       return reply.status(404).send({ error: "Share has expired" });
     }
 
-    const shareUrl = `${request.protocol}://${request.hostname}/api/v1/share/${shared.token}`;
+    const origin = config.PUBLIC_URL ?? `${request.protocol}://${request.hostname}`;
+    const shareUrl = `${origin}/api/v1/share/${shared.token}`;
     return reply.send({ token: shared.token, shareUrl, expiresAt: shared.expiresAt, createdAt: shared.createdAt });
   });
 }

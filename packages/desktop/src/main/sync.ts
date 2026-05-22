@@ -578,7 +578,7 @@ export const syncClient = {
 
   handleWsMessage(msg: { type: string; payload: unknown }): void {
     if (msg.type === "chunk_request") {
-      const { fileId, shardIndex } = msg.payload as { fileId: string; shardIndex: number };
+      const { fileId, shardIndex, requestNonce } = msg.payload as { fileId: string; shardIndex: number; requestNonce: string };
       const chunkId = `${fileId}-${shardIndex}`;
       storageManager
         .readRawChunk(chunkId)
@@ -586,7 +586,7 @@ export const syncClient = {
           ws?.send(
             JSON.stringify({
               type: "chunk_response",
-              payload: { fileId, shardIndex, data: data.toString("base64"), chunkHash: sha256(data) },
+              payload: { fileId, shardIndex, requestNonce, data: data.toString("base64"), chunkHash: sha256(data) },
             }),
           );
         })
@@ -597,11 +597,12 @@ export const syncClient = {
     }
 
     if (msg.type === "chunk_relay") {
-      const { fileId, shardIndex, chunkHash, data } = msg.payload as {
+      const { fileId, shardIndex, chunkHash, ackNonce, data } = msg.payload as {
         fileId: string;
         shardIndex: number;
         chunkHash: string;
         isData: boolean;
+        ackNonce: string;
         data: string;
       };
       const encryptedData = Buffer.from(data, "base64");
@@ -611,7 +612,7 @@ export const syncClient = {
           ws?.send(
             JSON.stringify({
               type: "chunk_ack",
-              payload: { fileId, shardIndex, success: true, chunkHash },
+              payload: { fileId, shardIndex, ackNonce, success: true, chunkHash },
             }),
           );
         })
@@ -620,7 +621,7 @@ export const syncClient = {
           ws?.send(
             JSON.stringify({
               type: "chunk_ack",
-              payload: { fileId, shardIndex, success: false, chunkHash },
+              payload: { fileId, shardIndex, ackNonce, success: false, chunkHash },
             }),
           );
         });
