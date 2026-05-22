@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: Inter, system-ui, sans-serif;
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-slate-900 text-slate-100 m-0 p-0 overflow-hidden;
+  -webkit-app-region: no-drag;
+  user-select: none;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { @apply bg-slate-800; }
+::-webkit-scrollbar-thumb { @apply bg-slate-600 rounded-full; }

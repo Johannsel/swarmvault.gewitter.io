@@ -1,0 +1,18 @@
+node_modules/
+dist/
+.env
+.env.local
+*.log
+.turbo/
+.DS_Store
+Thumbs.db
+
+# Electron build output
+packages/desktop/release/
+packages/desktop/out/
+
+# Prisma generated client
+packages/server/node_modules/.prisma/
+
+# Local storage data (dev)
+packages/desktop/.swarmvault/

@@ -1,0 +1,49 @@
+appId: io.gewitter.swarmvault
+productName: SwarmVault
+copyright: Copyright © 2025 SwarmVault
+
+directories:
+  output: release
+
+files:
+  - dist/**
+  - package.json
+
+# macOS
+mac:
+  category: public.app-category.utilities
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+
+# Windows
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+        - ia32
+  icon: assets/icon.ico
+
+# Linux
+linux:
+  target:
+    - target: AppImage
+      arch:
+        - x64
+    - target: deb
+      arch:
+        - x64
+  category: Utility
+  icon: assets/icon.png
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+
+publish:
+  provider: github
+  owner: swarmvault
+  repo: desktop

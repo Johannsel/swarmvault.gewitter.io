@@ -1,0 +1,100 @@
+version: "3.9"
+
+services:
+  server:
+    build:
+      context: ../..
+      dockerfile: packages/server/Dockerfile
+    image: swarmvault.gewitter.io.server:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - swarmvault.gewitter.io
+      - traefik
+    expose:
+      - "3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOST: 0.0.0.0
+      # DATABASE_URL and REDIS_URL are constructed by docker-entrypoint.sh
+      # from the Docker secrets below — do not set them here.
+      JWT_EXPIRY: "7d"
+      CHUNK_TEMP_DIR: "/tmp/swarmvault-chunks"
+      REWARD_CRON: "0 * * * *"
+    secrets:
+      - jwt_secret
+      - postgres_password
+      - redis_password
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik"
+      # Router
+      - "traefik.http.routers.swarmvault-api.rule=Host(`api.swarmvault.gewitter.io`)"
+      - "traefik.http.routers.swarmvault-api.entrypoints=websecure"
+      - "traefik.http.routers.swarmvault-api.tls.certresolver=leresolver"
+      # Allow large shard uploads (20 MB per chunk)
+      - "traefik.http.routers.swarmvault-api.middlewares=swarmvault-bodylimit"
+      - "traefik.http.middlewares.swarmvault-bodylimit.buffering.maxRequestBodyBytes=20971520"
+      # Backend
+      - "traefik.http.services.swarmvault-api.loadbalancer.server.port=3000"
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    expose:
+      - "5432"
+    networks:
+      - swarmvault.gewitter.io
+    volumes:
+      - db-swarmvault:/var/lib/postgresql/data:rw
+    environment:
+      POSTGRES_USER: swarmvault
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_DB: swarmvault
+    secrets:
+      - postgres_password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U swarmvault"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks:
+      - swarmvault.gewitter.io
+    volumes:
+      - redis-swarmvault:/data:rw
+    secrets:
+      - redis_password
+    command: >
+      sh -c "redis-server --appendonly yes --requirepass $$(cat /run/secrets/redis_password)"
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a $$(cat /run/secrets/redis_password) ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  db-swarmvault:
+  redis-swarmvault:
+
+networks:
+  swarmvault.gewitter.io:
+  traefik:
+    external: true
+
+secrets:
+  jwt_secret:
+    file: ./.secrets/jwt_secret.txt
+  postgres_password:
+    file: ./.secrets/postgres_password.txt
+  redis_password:
+    file: ./.secrets/redis_password.txt
+

@@ -1,0 +1,38 @@
+{
+  "name": "@swarmvault/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./dist/main/index.js",
+  "scripts": {
+    "dev": "NODE_ENV=development concurrently -k \"tsc -p tsconfig.node.json --watch --preserveWatchOutput\" \"vite\" \"wait-on dist/main/index.js http://localhost:5173 && NODE_ENV=development electron .\"",
+    "build": "tsc -p tsconfig.node.json && vite build",
+    "build:electron": "electron-builder --config electron-builder.yml",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist out"
+  },
+  "dependencies": {
+    "@swarmvault/shared": "workspace:*",
+    "chokidar": "^4.0.3",
+    "electron-store": "^8.2.0",
+    "ws": "^8.20.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@types/ws": "^8.18.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "concurrently": "^9.1.2",
+    "electron": "^33.3.1",
+    "electron-builder": "^25.1.8",
+    "lucide-react": "^0.469.0",
+    "postcss": "^8.4.49",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7",
+    "wait-on": "^8.0.1"
+  }
+}

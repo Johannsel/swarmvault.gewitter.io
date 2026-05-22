@@ -1,0 +1,229 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+//  Users
+// ─────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  username     String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Storage quota in bytes (base + earned via credits)
+  storageQuotaBytes BigInt @default(2147483648) // 2 GB
+  usedStorageBytes  BigInt @default(0)
+
+  nodes         StorageNode[]
+  files         SwarmFile[]
+  rewards       RewardBalance?
+  retrievalJobs RetrievalJob[]
+  contributions ContributionSnapshot[]
+  sharedFiles   SharedFile[]
+
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────
+//  Storage Nodes (desktop client registrations)
+// ─────────────────────────────────────────────
+
+enum StorageTier {
+  vault  // Tier 1: always-on homeserver
+  swarm  // Tier 2: consumer PC best-effort
+}
+
+enum NodeStatus {
+  online
+  offline
+  maintenance
+}
+
+model StorageNode {
+  id          String      @id @default(cuid())
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  displayName String
+  tier        StorageTier @default(swarm)
+  status      NodeStatus  @default(offline)
+
+  pledgedBytes         BigInt @default(0)
+  usedBytes            BigInt @default(0)
+  availableDiskBytes   BigInt?  // last-reported free bytes on the node's disk partition
+
+  // Rolling uptime metrics
+  uptimePct    Float    @default(0)  // short-window (7-day) — used for tier assignment
+  uptimePct3m  Float?               // 3-month rolling average — used for reward calculation (null = < 1 snapshot)
+
+  // Internal address used by the server for chunk relay (not shared with users)
+  relayToken  String? @unique // signed token the node uses to authenticate WS
+  lastSeenAt  DateTime?
+  registeredAt DateTime @default(now())
+
+  chunkLocations ChunkLocation[]
+  contributions  ContributionSnapshot[]
+
+  @@map("storage_nodes")
+}
+
+// ─────────────────────────────────────────────
+//  Files & Chunks
+// ─────────────────────────────────────────────
+
+enum FileStatus {
+  pending
+  available
+  degraded
+  claimed
+  retrieving
+  deleted
+}
+
+model SwarmFile {
+  id          String     @id @default(cuid())
+  ownerId     String
+  owner       User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name        String
+  path        String     // virtual path inside the user's vault, e.g. "/photos/cat.jpg"
+  mimeType    String     @default("application/octet-stream")
+  sizeBytes   BigInt
+  status      FileStatus @default(pending)
+  tier        StorageTier @default(swarm)
+  contentHash String     // SHA-256 of plaintext, computed client-side
+  totalShards        Int
+  parityShards       Int
+  encryptedMasterKey String   // AES-256-GCM master key, encrypted with the user's vault key and stored opaquely
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  deletedAt          DateTime? // null = active; non-null = soft-deleted (trash)
+
+  chunks        FileChunk[]
+  retrievalJobs RetrievalJob[]
+  sharedFiles   SharedFile[]
+
+  @@unique([ownerId, path])
+  @@map("swarm_files")
+}
+
+model FileChunk {
+  id         String    @id @default(cuid())
+  fileId     String
+  file       SwarmFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  shardIndex Int
+  isData     Boolean   @default(true)
+  sizeBytes  BigInt
+  chunkHash  String    // SHA-256 of the encrypted chunk
+
+  locations ChunkLocation[]
+
+  @@unique([fileId, shardIndex])
+  @@map("file_chunks")
+}
+
+model ChunkLocation {
+  chunkId  String
+  chunk    FileChunk   @relation(fields: [chunkId], references: [id], onDelete: Cascade)
+  nodeId   String
+  node     StorageNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  storedAt DateTime    @default(now())
+  verified Boolean     @default(false)
+
+  @@id([chunkId, nodeId])
+  @@map("chunk_locations")
+}
+
+// ─────────────────────────────────────────────
+//  Retrieval Jobs (Tier-2 claim flow)
+// ─────────────────────────────────────────────
+
+enum RetrievalJobStatus {
+  queued
+  waiting_nodes
+  assembling
+  done
+  failed
+}
+
+model RetrievalJob {
+  id                   String             @id @default(cuid())
+  fileId               String
+  file                 SwarmFile          @relation(fields: [fileId], references: [id])
+  requestedBy          String
+  user                 User               @relation(fields: [requestedBy], references: [id])
+  status               RetrievalJobStatus @default(queued)
+  shutdownAfterDownload Boolean           @default(false)
+  createdAt            DateTime           @default(now())
+  completedAt          DateTime?
+  errorMessage         String?
+
+  @@map("retrieval_jobs")
+}
+
+// ─────────────────────────────────────────────
+//  File Sharing (shadow-file model)
+// ─────────────────────────────────────────────
+
+model SharedFile {
+  id          String    @id @default(cuid())
+  fileId      String
+  file        SwarmFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  ownerId     String
+  owner       User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  /// Random token used in the public share URL
+  token       String    @unique @default(cuid())
+
+  /// Plaintext copy of the file, stored temporarily for sharing
+  data        Bytes
+
+  name        String
+  mimeType    String    @default("application/octet-stream")
+  sizeBytes   BigInt
+
+  /// When the shadow copy expires (createdAt + 7 days, never extended)
+  expiresAt   DateTime
+  createdAt   DateTime  @default(now())
+
+  @@map("shared_files")
+}
+
+// ─────────────────────────────────────────────
+//  Rewards
+// ─────────────────────────────────────────────
+
+model RewardBalance {
+  userId         String   @id
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  credits        Float    @default(0)
+  lifetimeEarned Float    @default(0)
+  updatedAt      DateTime @updatedAt
+
+  @@map("reward_balances")
+}
+
+model ContributionSnapshot {
+  id             String      @id @default(cuid())
+  nodeId         String
+  node           StorageNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tier           StorageTier
+  pledgedBytes   BigInt
+  uptimePct      Float
+  creditsEarned  Float
+  snapshotAt     DateTime    @default(now())
+
+  @@map("contribution_snapshots")
+}
