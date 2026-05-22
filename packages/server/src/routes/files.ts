@@ -407,7 +407,7 @@ export async function fileRoutes(fastify: FastifyInstance & { redis: Redis }): P
     // 2. Try a live assignment
     const totalShards = file.totalShards + file.parityShards;
     try {
-      const assignment = await distributionService.assignNodes(id, totalShards, file.tier as "vault" | "swarm");
+      const assignment = await distributionService.assignNodes(id, totalShards);
       await fastify.redis.set(`swarmvault:assignment:${id}`, JSON.stringify(assignment), "EX", 3600);
       // Remove from pending queue since we have an assignment now
       await fastify.redis.srem("swarmvault:pending-distribution", id);

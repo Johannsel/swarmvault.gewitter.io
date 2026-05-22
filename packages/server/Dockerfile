@@ -6,7 +6,7 @@ RUN npm install -g pnpm@9
 WORKDIR /app
 
 # Copy workspace manifests first for layer caching
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.base.json ./
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/server/package.json ./packages/server/
 
@@ -16,10 +16,11 @@ RUN pnpm install --frozen-lockfile --ignore-scripts
 COPY packages/shared ./packages/shared
 COPY packages/server ./packages/server
 
+# Generate Prisma client BEFORE tsc so types are available during compilation
+RUN pnpm --filter @swarmvault/server prisma:generate
 # Build shared first, then server
 RUN pnpm --filter @swarmvault/shared build
 RUN pnpm --filter @swarmvault/server build
-RUN pnpm --filter @swarmvault/server prisma:generate
 
 # ── Runtime stage ─────────────────────────────────────────────────────────────
 FROM node:20-bookworm-slim AS runtime
