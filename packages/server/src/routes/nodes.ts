@@ -20,9 +20,7 @@ const heartbeatBody = z.object({
   availableDiskBytes: z.number().int().min(0).optional(),
 });
 
-export async function nodeRoutes(
-  fastify: FastifyInstance & { redis: Redis }
-): Promise<void> {
+export async function nodeRoutes(fastify: FastifyInstance & { redis: Redis }): Promise<void> {
   const preHandler = [fastify.authenticate];
 
   // POST /api/v1/nodes — register a new storage node
@@ -110,9 +108,7 @@ export async function nodeRoutes(
         status: body.data.status,
         usedBytes: body.data.usedBytes,
         pledgedBytes: body.data.pledgedBytes,
-        availableDiskBytes: body.data.availableDiskBytes != null
-          ? BigInt(body.data.availableDiskBytes)
-          : undefined,
+        availableDiskBytes: body.data.availableDiskBytes != null ? BigInt(body.data.availableDiskBytes) : undefined,
         lastSeenAt: new Date(),
       },
     });
@@ -120,9 +116,7 @@ export async function nodeRoutes(
     // When a node transitions from offline → online, kick the pending-distribution
     // worker asynchronously so queued files get assigned as quickly as possible.
     if (wasOffline && body.data.status === "online") {
-      distributionService.tryDistributePendingFiles(fastify.redis).catch((err) =>
-        console.error("[heartbeat] tryDistributePendingFiles failed:", err)
-      );
+      distributionService.tryDistributePendingFiles(fastify.redis).catch((err) => console.error("[heartbeat] tryDistributePendingFiles failed:", err));
     }
 
     return reply.send({ ok: true });

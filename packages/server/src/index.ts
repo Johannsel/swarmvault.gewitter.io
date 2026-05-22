@@ -40,7 +40,7 @@ new Worker(
   async () => {
     await rewardService.runSnapshot();
   },
-  { connection: redis }
+  { connection: redis },
 );
 
 // Node health worker — marks stale nodes offline every minute, then attempts
@@ -53,20 +53,12 @@ new Worker(
     const distributed = await distributionService.tryDistributePendingFiles(redis);
     if (distributed > 0) console.log(`[node-health] Assigned ${distributed} queued file(s)`);
   },
-  { connection: redis }
+  { connection: redis },
 );
 
 // Schedule recurring jobs (idempotent — repeatable jobs are de-duped by key)
-await rewardQueue.add(
-  "snapshot",
-  {},
-  { repeat: { pattern: config.REWARD_CRON }, jobId: "reward-snapshot" }
-);
-await nodeHealthQueue.add(
-  "check",
-  {},
-  { repeat: { every: 60_000 }, jobId: "node-health-check" }
-);
+await rewardQueue.add("snapshot", {}, { repeat: { pattern: config.REWARD_CRON }, jobId: "reward-snapshot" });
+await nodeHealthQueue.add("check", {}, { repeat: { every: 60_000 }, jobId: "node-health-check" });
 
 // ─────────────────────────────────────────────
 //  Fastify app
@@ -81,10 +73,7 @@ const fastify = Fastify({
 // Augment FastifyInstance with `authenticate` decorator
 declare module "fastify" {
   interface FastifyInstance {
-    authenticate: (
-      request: import("fastify").FastifyRequest,
-      reply: import("fastify").FastifyReply
-    ) => Promise<void>;
+    authenticate: (request: import("fastify").FastifyRequest, reply: import("fastify").FastifyReply) => Promise<void>;
     redis: IORedis;
     /** Active WebSocket connections keyed by nodeId */
     nodeConnections: Map<string, WebSocket>;
@@ -146,46 +135,52 @@ await fastify.register(sharingRoutes, { prefix: `${API_BASE}/files` });
 await fastify.register(publicShareRoutes, { prefix: `${API_BASE}/share` });
 
 // Expired shadow-file cleanup — runs every hour
-setInterval(async () => {
-  const deleted = await prisma.sharedFile.deleteMany({
-    where: { expiresAt: { lt: new Date() } },
-  });
-  if (deleted.count > 0)
-    fastify.log.info(`[sharing] Pruned ${deleted.count} expired shadow file(s)`);
-}, 60 * 60 * 1000);
+setInterval(
+  async () => {
+    const deleted = await prisma.sharedFile.deleteMany({
+      where: { expiresAt: { lt: new Date() } },
+    });
+    if (deleted.count > 0) fastify.log.info(`[sharing] Pruned ${deleted.count} expired shadow file(s)`);
+  },
+  60 * 60 * 1000,
+);
 
 // 30-day trash purge — hard-deletes files that have been in trash longer than 30 days
-setInterval(async () => {
-  const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-  const trashed = await prisma.swarmFile.findMany({
-    where: { deletedAt: { lt: cutoff } },
-    select: { id: true },
-  });
-  if (trashed.length > 0) {
-    await prisma.swarmFile.deleteMany({ where: { id: { in: trashed.map((f) => f.id) } } });
-    fastify.log.info(`[trash] Permanently deleted ${trashed.length} file(s) older than 30 days`);
-  }
-}, 60 * 60 * 1000);
+setInterval(
+  async () => {
+    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const trashed = await prisma.swarmFile.findMany({
+      where: { deletedAt: { lt: cutoff } },
+      select: { id: true },
+    });
+    if (trashed.length > 0) {
+      await prisma.swarmFile.deleteMany({ where: { id: { in: trashed.map((f) => f.id) } } });
+      fastify.log.info(`[trash] Permanently deleted ${trashed.length} file(s) older than 30 days`);
+    }
+  },
+  60 * 60 * 1000,
+);
 
 // Tier auto-promotion — every hour, promote nodes with ≥80% uptime to vault and
 // demote nodes below 80% back to swarm. No manual tier selection needed.
-setInterval(async () => {
-  const [promoted, demoted] = await Promise.all([
-    prisma.storageNode.updateMany({
-      where: { uptimePct: { gte: 80 }, tier: "swarm" },
-      data: { tier: "vault" },
-    }),
-    prisma.storageNode.updateMany({
-      where: { uptimePct: { lt: 80 }, tier: "vault" },
-      data: { tier: "swarm" },
-    }),
-  ]);
-  if (promoted.count > 0 || demoted.count > 0) {
-    fastify.log.info(
-      `[tier] Promoted ${promoted.count} node(s) to vault, demoted ${demoted.count} to swarm`
-    );
-  }
-}, 60 * 60 * 1000);
+setInterval(
+  async () => {
+    const [promoted, demoted] = await Promise.all([
+      prisma.storageNode.updateMany({
+        where: { uptimePct: { gte: 80 }, tier: "swarm" },
+        data: { tier: "vault" },
+      }),
+      prisma.storageNode.updateMany({
+        where: { uptimePct: { lt: 80 }, tier: "vault" },
+        data: { tier: "swarm" },
+      }),
+    ]);
+    if (promoted.count > 0 || demoted.count > 0) {
+      fastify.log.info(`[tier] Promoted ${promoted.count} node(s) to vault, demoted ${demoted.count} to swarm`);
+    }
+  },
+  60 * 60 * 1000,
+);
 
 // Health check
 fastify.get("/health", async () => ({ status: "ok", ts: new Date().toISOString() }));
@@ -228,7 +223,9 @@ fastify.get("/ws", { websocket: true }, (socket, _request) => {
       // ── Chunk acknowledgement from node (upload path) ──────────────────
       if (msg.type === "chunk_ack") {
         const { fileId, shardIndex, success } = msg.payload as {
-          fileId: string; shardIndex: number; success: boolean;
+          fileId: string;
+          shardIndex: number;
+          success: boolean;
         };
         const key = `${fileId}:${shardIndex}`;
         const resolve = pendingAcks.get(key);
@@ -239,7 +236,9 @@ fastify.get("/ws", { websocket: true }, (socket, _request) => {
       // ── Chunk response from node (download / retrieval path) ─────────────
       if (msg.type === "chunk_response") {
         const { fileId, shardIndex, data } = msg.payload as {
-          fileId: string; shardIndex: number; data: string | null;
+          fileId: string;
+          shardIndex: number;
+          data: string | null;
         };
         const key = `${fileId}:${shardIndex}`;
         const resolve = pendingChunkResponses.get(key);

@@ -48,11 +48,7 @@ export default function Dashboard() {
   const [connected, setConnected] = useState(false);
 
   const load = async () => {
-    const [s, r, n] = await Promise.all([
-      window.swarmvault.getStorageStats(),
-      window.swarmvault.getRewards().catch(() => null),
-      window.swarmvault.getNodeStatus().catch(() => null),
-    ]);
+    const [s, r, n] = await Promise.all([window.swarmvault.getStorageStats(), window.swarmvault.getRewards().catch(() => null), window.swarmvault.getNodeStatus().catch(() => null)]);
     setStats(s as Stats);
     setRewards(r);
     setNodeStatus(n as NodeStatus | null);
@@ -98,8 +94,7 @@ export default function Dashboard() {
         <div className="flex items-start gap-2.5 bg-red-900/25 border border-red-500/30 rounded-xl p-3.5 text-xs text-red-300">
           <AlertTriangle size={14} className="shrink-0 mt-0.5" />
           <span>
-            Your node&apos;s 3-month average uptime is <strong>{effectiveUptime.toFixed(0)}%</strong> — below the 50% minimum.
-            No rewards are earned until uptime exceeds 50%. Keep this app running to improve your average.
+            Your node&apos;s 3-month average uptime is <strong>{effectiveUptime.toFixed(0)}%</strong> — below the 50% minimum. No rewards are earned until uptime exceeds 50%. Keep this app running to improve your average.
           </span>
         </div>
       )}
@@ -116,10 +111,7 @@ export default function Dashboard() {
             of <span className="text-slate-300">{formatBytes(stats?.pledgedBytes ?? 0)}</span> pledged to the network
           </div>
           <div className="h-1.5 rounded-full bg-slate-700 overflow-hidden">
-            <div
-              className="h-full rounded-full bg-violet-500 transition-all"
-              style={{ width: `${Math.min(usedPct, 100).toFixed(1)}%` }}
-            />
+            <div className="h-full rounded-full bg-violet-500 transition-all" style={{ width: `${Math.min(usedPct, 100).toFixed(1)}%` }} />
           </div>
           {diskFreeLabel && (
             <div className={`text-xs flex items-center gap-1 ${(diskFree ?? 0) < (stats?.pledgedBytes ?? 0) - (stats?.usedBytes ?? 0) ? "text-amber-400" : "text-slate-500"}`}>
@@ -141,10 +133,7 @@ export default function Dashboard() {
             {isOverQuota && <span className="text-amber-400 ml-1">— quota exceeded, uploads paused</span>}
           </div>
           <div className="h-1.5 rounded-full bg-slate-700 overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all ${isOverQuota ? "bg-amber-500" : "bg-cyan-500"}`}
-              style={{ width: `${Math.min(quotaUsedPct, 100).toFixed(1)}%` }}
-            />
+            <div className={`h-full rounded-full transition-all ${isOverQuota ? "bg-amber-500" : "bg-cyan-500"}`} style={{ width: `${Math.min(quotaUsedPct, 100).toFixed(1)}%` }} />
           </div>
           <div className="text-xs text-slate-500 flex items-center gap-1">
             <Info size={11} />
@@ -157,16 +146,16 @@ export default function Dashboard() {
           <div className="flex items-center gap-2 text-sm text-slate-400">
             <TrendingUp size={14} /> SwarmCredits
           </div>
-          <div className="text-2xl font-semibold">
-            {rewards?.balance?.credits?.toFixed(2) ?? "—"}
-          </div>
+          <div className="text-2xl font-semibold">{rewards?.balance?.credits?.toFixed(2) ?? "—"}</div>
           <div className="text-xs text-slate-500 space-y-0.5">
             <div>{rewards?.balance?.lifetimeEarned?.toFixed(2) ?? "—"} earned lifetime</div>
             <div>1 credit = +1 GB storage quota</div>
           </div>
           {effectiveUptime != null && (
             <div className={`text-xs flex items-center gap-1 pt-1 ${uptimeLabel(effectiveUptime).color}`}>
-              <span>Uptime {effectiveUptime.toFixed(0)}% — {uptimeLabel(effectiveUptime).text}</span>
+              <span>
+                Uptime {effectiveUptime.toFixed(0)}% — {uptimeLabel(effectiveUptime).text}
+              </span>
             </div>
           )}
         </div>
@@ -196,9 +185,7 @@ export default function Dashboard() {
               )}
               <div className="flex justify-between">
                 <span>Status</span>
-                <span className={nodeStatus.status === "online" ? "text-emerald-400" : "text-slate-400"}>
-                  {nodeStatus.status}
-                </span>
+                <span className={nodeStatus.status === "online" ? "text-emerald-400" : "text-slate-400"}>{nodeStatus.status}</span>
               </div>
             </div>
           ) : (
@@ -209,23 +196,15 @@ export default function Dashboard() {
             {stats?.paused ? (
               <button
                 className="w-full text-xs py-2 rounded-lg bg-emerald-900/30 hover:bg-emerald-800/40 transition-colors text-emerald-400 flex items-center justify-center gap-1.5"
-                onClick={() => window.swarmvault.resumeContribution().then(load)}
-              >
+                onClick={() => window.swarmvault.resumeContribution().then(load)}>
                 <PlayCircle size={13} /> Resume Contribution
               </button>
             ) : (
-              <button
-                className="w-full text-xs py-2 rounded-lg bg-slate-700 hover:bg-slate-600 transition-colors text-slate-300 flex items-center justify-center gap-1.5"
-                onClick={() => window.swarmvault.pauseContribution().then(load)}
-              >
+              <button className="w-full text-xs py-2 rounded-lg bg-slate-700 hover:bg-slate-600 transition-colors text-slate-300 flex items-center justify-center gap-1.5" onClick={() => window.swarmvault.pauseContribution().then(load)}>
                 <PauseCircle size={13} /> Pause Contribution
               </button>
             )}
-            <div className="text-[10px] text-slate-600 text-center leading-tight">
-              {stats?.paused
-                ? "Paused: no new chunks accepted. Existing stored data remains on disk."
-                : "Accepting chunk requests from the network."}
-            </div>
+            <div className="text-[10px] text-slate-600 text-center leading-tight">{stats?.paused ? "Paused: no new chunks accepted. Existing stored data remains on disk." : "Accepting chunk requests from the network."}</div>
           </div>
         </div>
       </div>
@@ -235,11 +214,14 @@ export default function Dashboard() {
         <div className="flex items-center gap-1.5 text-slate-400 font-medium text-[11px] mb-1.5">
           <CheckCircle2 size={12} className="text-emerald-400" /> How SwarmVault protects your data
         </div>
-        <div>· Files are encrypted with <strong className="text-slate-300">AES-256-GCM</strong> on your device before leaving. The server never sees your data.</div>
-        <div>· Files are split into shards with <strong className="text-slate-300">Reed-Solomon redundancy</strong> — they survive even if several nodes go offline.</div>
+        <div>
+          · Files are encrypted with <strong className="text-slate-300">AES-256-GCM</strong> on your device before leaving. The server never sees your data.
+        </div>
+        <div>
+          · Files are split into shards with <strong className="text-slate-300">Reed-Solomon redundancy</strong> — they survive even if several nodes go offline.
+        </div>
         <div>· Vault-tier nodes (≥ 80% uptime) get priority placement for the most reliable storage.</div>
       </div>
     </div>
   );
 }
-

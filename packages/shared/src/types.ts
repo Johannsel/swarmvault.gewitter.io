@@ -12,7 +12,7 @@ export interface User {
 }
 
 export interface AuthTokenPayload {
-  sub: string;       // user id
+  sub: string; // user id
   email: string;
   username: string;
   iat: number;
@@ -59,18 +59,18 @@ export interface StorageNode {
 // ─────────────────────────────────────────────
 
 export type FileStatus =
-  | "pending"      // upload in progress
-  | "available"    // all chunks stored, file accessible
-  | "degraded"     // some chunks missing, repair in progress
-  | "claimed"      // Tier-2 retrieval job queued
-  | "retrieving"   // retrieval job running
+  | "pending" // upload in progress
+  | "available" // all chunks stored, file accessible
+  | "degraded" // some chunks missing, repair in progress
+  | "claimed" // Tier-2 retrieval job queued
+  | "retrieving" // retrieval job running
   | "deleted";
 
 export interface SwarmFile {
   id: string;
   ownerId: string;
   name: string;
-  path: string;        // virtual path inside the user's vault
+  path: string; // virtual path inside the user's vault
   mimeType: string;
   sizeBytes: number;
   status: FileStatus;
@@ -111,7 +111,7 @@ export interface ChunkLocation {
 
 export type RetrievalJobStatus =
   | "queued"
-  | "waiting_nodes"  // not enough contributor nodes online yet
+  | "waiting_nodes" // not enough contributor nodes online yet
   | "assembling"
   | "done"
   | "failed";
@@ -156,15 +156,7 @@ export interface ContributionSnapshot {
 //  WebSocket / IPC message types
 // ─────────────────────────────────────────────
 
-export type WsMessageType =
-  | "heartbeat"
-  | "heartbeat_ack"
-  | "chunk_store_request"
-  | "chunk_store_ack"
-  | "chunk_retrieve_request"
-  | "chunk_retrieve_response"
-  | "retrieval_job_update"
-  | "node_status_update";
+export type WsMessageType = "heartbeat" | "heartbeat_ack" | "chunk_store_request" | "chunk_store_ack" | "chunk_retrieve_request" | "chunk_retrieve_response" | "retrieval_job_update" | "node_status_update";
 
 export interface WsMessage<T = unknown> {
   type: WsMessageType;

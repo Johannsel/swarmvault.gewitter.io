@@ -23,9 +23,7 @@ const claimFileBody = z.object({
   shutdownAfterDownload: z.boolean().default(false),
 });
 
-export async function fileRoutes(
-  fastify: FastifyInstance & { redis: Redis }
-): Promise<void> {
+export async function fileRoutes(fastify: FastifyInstance & { redis: Redis }): Promise<void> {
   const preHandler = [fastify.authenticate];
 
   // POST /api/v1/files — register a new file upload intent
@@ -51,9 +49,7 @@ export async function fileRoutes(
         overQuota: true,
         usedBytes: Number(user.usedStorageBytes),
         quotaBytes: Number(user.storageQuotaBytes),
-        message: alreadyOver
-          ? "Your storage quota has been reached. Your existing files are safe — contribute storage or wait for credits to accumulate to unlock new uploads."
-          : "This file would exceed your storage quota.",
+        message: alreadyOver ? "Your storage quota has been reached. Your existing files are safe — contribute storage or wait for credits to accumulate to unlock new uploads." : "This file would exceed your storage quota.",
       });
     }
 
@@ -79,17 +75,9 @@ export async function fileRoutes(
     // If there aren't enough online nodes yet, queue the file and return 202 —
     // the client should poll GET /files/:id/assignment until it gets a result.
     try {
-      const assignment = await distributionService.assignNodes(
-        file.id,
-        totalShards
-      );
+      const assignment = await distributionService.assignNodes(file.id, totalShards);
       // Cache so the polling endpoint can serve it without re-querying nodes
-      await fastify.redis.set(
-        `swarmvault:assignment:${file.id}`,
-        JSON.stringify(assignment),
-        "EX",
-        3600
-      );
+      await fastify.redis.set(`swarmvault:assignment:${file.id}`, JSON.stringify(assignment), "EX", 3600);
       return reply.status(201).send({ file, shardAssignment: assignment, queued: false });
     } catch {
       // Not enough online nodes — park the file in the pending queue
@@ -140,7 +128,7 @@ export async function fileRoutes(
 
     const where: Record<string, unknown> = {
       ownerId: payload.sub,
-      deletedAt: null,  // hide soft-deleted (trashed) files from the main listing
+      deletedAt: null, // hide soft-deleted (trashed) files from the main listing
     };
     if (query.path) where["path"] = { startsWith: query.path };
     if (query.status) where["status"] = query.status;
@@ -171,9 +159,7 @@ export async function fileRoutes(
       }),
     ]);
 
-    const overQuota = user
-      ? BigInt(user.usedStorageBytes) > BigInt(user.storageQuotaBytes)
-      : false;
+    const overQuota = user ? BigInt(user.usedStorageBytes) > BigInt(user.storageQuotaBytes) : false;
 
     return reply.send({
       files,
@@ -206,12 +192,8 @@ export async function fileRoutes(
 
     // Quota check: allow size-reducing updates even when over quota (user is freeing space).
     // Only block if the new version is *larger* and would push past the quota.
-    const oldContribution =
-      file.status === "available" || file.status === "degraded"
-        ? BigInt(file.sizeBytes)
-        : 0n;
-    const projected =
-      BigInt(user.usedStorageBytes) - oldContribution + BigInt(body.data.sizeBytes);
+    const oldContribution = file.status === "available" || file.status === "degraded" ? BigInt(file.sizeBytes) : 0n;
+    const projected = BigInt(user.usedStorageBytes) - oldContribution + BigInt(body.data.sizeBytes);
     const newIsSmaller = BigInt(body.data.sizeBytes) <= oldContribution;
     if (!newIsSmaller && projected > BigInt(user.storageQuotaBytes)) {
       return reply.status(402).send({
@@ -252,16 +234,8 @@ export async function fileRoutes(
 
     const totalShards = body.data.totalShards + body.data.parityShards;
     try {
-      const assignment = await distributionService.assignNodes(
-        id,
-        totalShards
-      );
-      await fastify.redis.set(
-        `swarmvault:assignment:${id}`,
-        JSON.stringify(assignment),
-        "EX",
-        3600
-      );
+      const assignment = await distributionService.assignNodes(id, totalShards);
+      await fastify.redis.set(`swarmvault:assignment:${id}`, JSON.stringify(assignment), "EX", 3600);
       return reply.send({ file: updated, shardAssignment: assignment, queued: false });
     } catch {
       await distributionService.queuePendingFile(fastify.redis, id);
@@ -321,8 +295,15 @@ export async function fileRoutes(
       where: { ownerId: payload.sub, deletedAt: { not: null } },
       orderBy: { deletedAt: "desc" },
       select: {
-        id: true, name: true, path: true, mimeType: true, sizeBytes: true,
-        status: true, tier: true, deletedAt: true, createdAt: true,
+        id: true,
+        name: true,
+        path: true,
+        mimeType: true,
+        sizeBytes: true,
+        status: true,
+        tier: true,
+        deletedAt: true,
+        createdAt: true,
       },
     });
     return reply.send({ files });
@@ -426,17 +407,8 @@ export async function fileRoutes(
     // 2. Try a live assignment
     const totalShards = file.totalShards + file.parityShards;
     try {
-      const assignment = await distributionService.assignNodes(
-        id,
-        totalShards,
-        file.tier as "vault" | "swarm"
-      );
-      await fastify.redis.set(
-        `swarmvault:assignment:${id}`,
-        JSON.stringify(assignment),
-        "EX",
-        3600
-      );
+      const assignment = await distributionService.assignNodes(id, totalShards, file.tier as "vault" | "swarm");
+      await fastify.redis.set(`swarmvault:assignment:${id}`, JSON.stringify(assignment), "EX", 3600);
       // Remove from pending queue since we have an assignment now
       await fastify.redis.srem("swarmvault:pending-distribution", id);
       return reply.send({ shardAssignment: assignment, source: "live" });

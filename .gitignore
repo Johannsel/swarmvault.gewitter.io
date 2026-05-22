@@ -1,18 +1,32 @@
+# ── Dependencies ──────────────────────────────────────────────────────────────
 node_modules/
-dist/
-.env
-.env.local
-*.log
-.turbo/
-.DS_Store
-Thumbs.db
 
-# Electron build output
+# ── Build output ──────────────────────────────────────────────────────────────
+dist/
 packages/desktop/release/
 packages/desktop/out/
 
-# Prisma generated client
-packages/server/node_modules/.prisma/
+# ── Environment / secrets ─────────────────────────────────────────────────────
+.env
+.env.*
+!.env.*.example
+packages/server/.secrets/
 
-# Local storage data (dev)
+# ── TypeScript / tooling caches ───────────────────────────────────────────────
+*.tsbuildinfo
+.turbo/
+
+# ── OS junk ───────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# ── Electron / desktop ────────────────────────────────────────────────────────
 packages/desktop/.swarmvault/
+
+# ── Prisma generated client ───────────────────────────────────────────────────
+packages/server/node_modules/.prisma/

@@ -34,7 +34,7 @@ function gfMul(a: number, b: number): number {
 function gfDiv(a: number, b: number): number {
   if (b === 0) throw new Error("GF division by zero");
   if (a === 0) return 0;
-  return GF_EXP[((GF_LOG[a]! - GF_LOG[b]!) + 255) % 255]!;
+  return GF_EXP[(GF_LOG[a]! - GF_LOG[b]! + 255) % 255]!;
 }
 
 // ─────────────────────────────────────────────
@@ -48,7 +48,7 @@ function makeVandermonde(rows: number, cols: number): Matrix {
   for (let r = 0; r < rows; r++) {
     const row: number[] = [];
     for (let c = 0; c < cols; c++) {
-      row.push(r === 0 ? 1 : gfMul(GF_EXP[r - 1]!, c === 0 ? 1 : GF_EXP[(r - 1) * c % 255]!));
+      row.push(r === 0 ? 1 : gfMul(GF_EXP[r - 1]!, c === 0 ? 1 : GF_EXP[((r - 1) * c) % 255]!));
     }
     m.push(row);
   }
@@ -56,20 +56,14 @@ function makeVandermonde(rows: number, cols: number): Matrix {
 }
 
 function identityMatrix(n: number): Matrix {
-  return Array.from({ length: n }, (_, i) =>
-    Array.from({ length: n }, (_, j) => (i === j ? 1 : 0))
-  );
+  return Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => (i === j ? 1 : 0)));
 }
 
 function matrixMultiply(a: Matrix, b: Matrix): Matrix {
   const rows = a.length;
   const cols = b[0]!.length;
   const inner = b.length;
-  return Array.from({ length: rows }, (_, r) =>
-    Array.from({ length: cols }, (_, c) =>
-      a[r]!.reduce((acc, _, k) => acc ^ gfMul(a[r]![k]!, b[k]![c]!), 0)
-    )
-  );
+  return Array.from({ length: rows }, (_, r) => Array.from({ length: cols }, (_, c) => a[r]!.reduce((acc, _, k) => acc ^ gfMul(a[r]![k]!, b[k]![c]!), 0)));
 }
 
 function subMatrix(m: Matrix, rows: number[]): Matrix {
@@ -85,7 +79,10 @@ function invertMatrix(m: Matrix): Matrix {
     // Pivot
     let pivotRow = -1;
     for (let r = col; r < n; r++) {
-      if (work[r]![col] !== 0) { pivotRow = r; break; }
+      if (work[r]![col] !== 0) {
+        pivotRow = r;
+        break;
+      }
     }
     if (pivotRow === -1) throw new Error("Matrix is not invertible");
     [work[col], work[pivotRow]] = [work[pivotRow]!, work[col]!];
@@ -117,11 +114,7 @@ function invertMatrix(m: Matrix): Matrix {
  * The first `dataShards` shards contain the original data (possibly zero-padded).
  * The remaining `parityShards` shards are parity (Reed-Solomon).
  */
-export function encodeFile(
-  data: Buffer,
-  dataShards: number,
-  parityShards: number
-): Buffer[] {
+export function encodeFile(data: Buffer, dataShards: number, parityShards: number): Buffer[] {
   const totalShards = dataShards + parityShards;
   // Pad data so it divides evenly into dataShards
   const shardSize = Math.ceil(data.length / dataShards);
@@ -163,25 +156,16 @@ export function encodeFile(
  *                 must be `null`.
  * @param originalSize  The exact size of the original file (to strip padding).
  */
-export function decodeFile(
-  shards: (Buffer | null)[],
-  dataShards: number,
-  parityShards: number,
-  originalSize: number
-): Buffer {
+export function decodeFile(shards: (Buffer | null)[], dataShards: number, parityShards: number, originalSize: number): Buffer {
   const totalShards = dataShards + parityShards;
   if (shards.length !== totalShards) {
     throw new Error(`Expected ${totalShards} shard slots, got ${shards.length}`);
   }
 
-  const presentIndices = shards
-    .map((s, i) => (s !== null ? i : -1))
-    .filter((i) => i >= 0);
+  const presentIndices = shards.map((s, i) => (s !== null ? i : -1)).filter((i) => i >= 0);
 
   if (presentIndices.length < dataShards) {
-    throw new Error(
-      `Need at least ${dataShards} shards, only ${presentIndices.length} available`
-    );
+    throw new Error(`Need at least ${dataShards} shards, only ${presentIndices.length} available`);
   }
 
   // If all data shards are present, skip reconstruction
@@ -206,7 +190,7 @@ export function decodeFile(
     for (let byteIdx = 0; byteIdx < shardSize; byteIdx++) {
       let val = 0;
       for (let k = 0; k < dataShards; k++) {
-        val ^= gfMul(row[k]!, (shards[usedIndices[k]!]!)[byteIdx]!);
+        val ^= gfMul(row[k]!, shards[usedIndices[k]!]![byteIdx]!);
       }
       result[byteIdx] = val;
     }

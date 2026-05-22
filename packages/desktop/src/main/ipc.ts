@@ -21,52 +21,48 @@ export const ipcHandlers = {
 
     // ── Authentication ────────────────────────────────────────────────────────
 
-    ipcMain.handle(
-      "auth:login",
-      async (_event, { email, password }: { email: string; password: string }) => {
-        const settings = storageManager.getSettings();
-        const res = await fetch(`${settings.serverUrl}/api/v1/auth/login`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password }),
-        });
-        if (!res.ok) {
-          const err = await res.json() as { error?: string };
-          throw new Error(err.error ?? "Login failed");
-        }
-        const data = await res.json() as { token: string; user: { id: string; email: string; username: string } };
-        storageManager.updateSettings({ authToken: data.token });
-        // Re-init sync if this node is already registered
-        const updated = storageManager.getSettings();
-        if (updated.nodeId) await syncClient.init();
-        mainWindow?.webContents.send("auth:changed", { loggedIn: true, user: data.user });
-        return data.user;
+    ipcMain.handle("auth:login", async (_event, { email, password }: { email: string; password: string }) => {
+      const settings = storageManager.getSettings();
+      const res = await fetch(`${settings.serverUrl}/api/v1/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      if (!res.ok) {
+        const err = (await res.json()) as { error?: string };
+        throw new Error(err.error ?? "Login failed");
       }
-    );
+      const data = (await res.json()) as { token: string; user: { id: string; email: string; username: string } };
+      storageManager.updateSettings({ authToken: data.token });
+      // Re-init sync if this node is already registered
+      const updated = storageManager.getSettings();
+      if (updated.nodeId) await syncClient.init();
+      mainWindow?.webContents.send("auth:changed", { loggedIn: true, user: data.user });
+      return data.user;
+    });
 
-    ipcMain.handle(
-      "auth:register",
-      async (_event, { email, username, password }: { email: string; username: string; password: string }) => {
-        const settings = storageManager.getSettings();
-        const res = await fetch(`${settings.serverUrl}/api/v1/auth/register`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, username, password }),
-        });
-        if (!res.ok) {
-          const err = await res.json() as { error?: string; details?: { fieldErrors?: Record<string, string[]> } };
-          const fieldErrs = err.details?.fieldErrors;
-          const msg = fieldErrs
-            ? Object.entries(fieldErrs).map(([f, msgs]) => `${f}: ${msgs.join(", ")}`).join(" | ")
-            : (err.error ?? "Registration failed");
-          throw new Error(msg);
-        }
-        const data = await res.json() as { token: string; user: { id: string; email: string; username: string } };
-        storageManager.updateSettings({ authToken: data.token });
-        mainWindow?.webContents.send("auth:changed", { loggedIn: true, user: data.user });
-        return data.user;
+    ipcMain.handle("auth:register", async (_event, { email, username, password }: { email: string; username: string; password: string }) => {
+      const settings = storageManager.getSettings();
+      const res = await fetch(`${settings.serverUrl}/api/v1/auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, username, password }),
+      });
+      if (!res.ok) {
+        const err = (await res.json()) as { error?: string; details?: { fieldErrors?: Record<string, string[]> } };
+        const fieldErrs = err.details?.fieldErrors;
+        const msg = fieldErrs
+          ? Object.entries(fieldErrs)
+              .map(([f, msgs]) => `${f}: ${msgs.join(", ")}`)
+              .join(" | ")
+          : (err.error ?? "Registration failed");
+        throw new Error(msg);
       }
-    );
+      const data = (await res.json()) as { token: string; user: { id: string; email: string; username: string } };
+      storageManager.updateSettings({ authToken: data.token });
+      mainWindow?.webContents.send("auth:changed", { loggedIn: true, user: data.user });
+      return data.user;
+    });
 
     ipcMain.handle("auth:logout", () => {
       storageManager.updateSettings({ authToken: null });
@@ -75,14 +71,20 @@ export const ipcHandlers = {
       return { ok: true };
     });
 
-
     ipcMain.handle(
       "node:register",
-      async (_event, { displayName, tier, pledgedBytes }: {
-        displayName: string;
-        tier: "vault" | "swarm";
-        pledgedBytes: number;
-      }) => {
+      async (
+        _event,
+        {
+          displayName,
+          tier,
+          pledgedBytes,
+        }: {
+          displayName: string;
+          tier: "vault" | "swarm";
+          pledgedBytes: number;
+        },
+      ) => {
         const settings = storageManager.getSettings();
         if (!settings.authToken) throw new Error("Not authenticated");
 
@@ -96,7 +98,7 @@ export const ipcHandlers = {
         });
 
         if (!res.ok) throw new Error(await res.text());
-        const { node } = await res.json() as { node: { id: string; relayToken: string } };
+        const { node } = (await res.json()) as { node: { id: string; relayToken: string } };
 
         storageManager.updateSettings({
           nodeId: node.id,
@@ -108,19 +110,15 @@ export const ipcHandlers = {
         // Restart sync to pick up new credentials
         await syncClient.init();
         return node;
-      }
+      },
     );
 
     // ── Storage stats ─────────────────────────────────────────────────────────
 
     ipcMain.handle("storage:stats", async () => {
-      const [usedBytes, availableDiskBytes] = await Promise.all([
-        storageManager.getUsedBytes(),
-        storageManager.getAvailableDiskBytes(),
-      ]);
+      const [usedBytes, availableDiskBytes] = await Promise.all([storageManager.getUsedBytes(), storageManager.getAvailableDiskBytes()]);
       const settings = storageManager.getSettings();
-      const sufficient = availableDiskBytes === Infinity
-        || availableDiskBytes >= settings.pledgedBytes - usedBytes;
+      const sufficient = availableDiskBytes === Infinity || availableDiskBytes >= settings.pledgedBytes - usedBytes;
       return {
         usedBytes,
         pledgedBytes: settings.pledgedBytes,
@@ -141,12 +139,20 @@ export const ipcHandlers = {
           headers: { Authorization: `Bearer ${settings.authToken}` },
         });
         if (!res.ok) return null;
-        const { nodes } = await res.json() as { nodes: Array<{
-          id: string; displayName: string; tier: string; status: string;
-          pledgedBytes: number; usedBytes: number;
-          uptimePct: number; uptimePct3m: number | null;
-          lastSeenAt: string | null; registeredAt: string;
-        }> };
+        const { nodes } = (await res.json()) as {
+          nodes: Array<{
+            id: string;
+            displayName: string;
+            tier: string;
+            status: string;
+            pledgedBytes: number;
+            usedBytes: number;
+            uptimePct: number;
+            uptimePct3m: number | null;
+            lastSeenAt: string | null;
+            registeredAt: string;
+          }>;
+        };
         return nodes.find((n) => n.id === settings.nodeId) ?? null;
       } catch {
         return null;
@@ -176,7 +182,7 @@ export const ipcHandlers = {
       const res = await fetch(`${settings.serverUrl}/api/v1/files?${qs}`, {
         headers: { Authorization: `Bearer ${settings.authToken}` },
       });
-      const json = await res.json() as { files: Array<{ path: string; [key: string]: unknown }> };
+      const json = (await res.json()) as { files: Array<{ path: string; [key: string]: unknown }> };
 
       // Annotate each file with whether it exists in the local sync folder
       if (json?.files) {
@@ -187,39 +193,35 @@ export const ipcHandlers = {
             try {
               await fs.access(localPath);
               localSynced = true;
-            } catch { /* not present locally */ }
+            } catch {
+              /* not present locally */
+            }
             return { ...file, localSynced };
-          })
+          }),
         );
       }
 
       return json;
     });
 
-    ipcMain.handle(
-      "files:downloadToSync",
-      async (_event, { fileId, filePath: virtualPath }: { fileId: string; filePath: string }) => {
-        const settings = storageManager.getSettings();
-        if (!settings.authToken) throw new Error("Not authenticated");
-        // Strip leading slash — downloadFile joins with syncDir
-        await syncClient.downloadFile(fileId, virtualPath.replace(/^\//, ""), settings);
-        return { ok: true };
-      }
-    );
+    ipcMain.handle("files:downloadToSync", async (_event, { fileId, filePath: virtualPath }: { fileId: string; filePath: string }) => {
+      const settings = storageManager.getSettings();
+      if (!settings.authToken) throw new Error("Not authenticated");
+      // Strip leading slash — downloadFile joins with syncDir
+      await syncClient.downloadFile(fileId, virtualPath.replace(/^\//, ""), settings);
+      return { ok: true };
+    });
 
-    ipcMain.handle(
-      "files:deleteFromVault",
-      async (_event, { fileId }: { fileId: string }) => {
-        const settings = storageManager.getSettings();
-        if (!settings.authToken) throw new Error("Not authenticated");
-        const res = await fetch(`${settings.serverUrl}/api/v1/files/${fileId}`, {
-          method: "DELETE",
-          headers: { Authorization: `Bearer ${settings.authToken}` },
-        });
-        if (!res.ok && res.status !== 404) throw new Error(await res.text());
-        return { ok: true };
-      }
-    );
+    ipcMain.handle("files:deleteFromVault", async (_event, { fileId }: { fileId: string }) => {
+      const settings = storageManager.getSettings();
+      if (!settings.authToken) throw new Error("Not authenticated");
+      const res = await fetch(`${settings.serverUrl}/api/v1/files/${fileId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${settings.authToken}` },
+      });
+      if (!res.ok && res.status !== 404) throw new Error(await res.text());
+      return { ok: true };
+    });
 
     // ── Rewards ───────────────────────────────────────────────────────────────
 

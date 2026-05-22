@@ -9,6 +9,6 @@ if (!root) throw new Error("Root element not found");
 createRoot(root).render(
   <React.StrictMode>
     <App />
-  </React.StrictMode>
+  </React.StrictMode>,
 );
 // rendererReady() is called in App.tsx's useEffect, after React hooks subscribe to sync:status

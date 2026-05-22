@@ -27,10 +27,7 @@ export const distributionService = {
    * Tier is no longer a per-file property chosen by the user; it is automatically
    * derived from each node's measured uptime.
    */
-  async assignNodes(
-    fileId: string,
-    shardCount: number
-  ): Promise<ShardAssignment[]> {
+  async assignNodes(fileId: string, shardCount: number): Promise<ShardAssignment[]> {
     const threshold = new Date(Date.now() - NODE_OFFLINE_THRESHOLD_MS);
 
     // 500 MB safety buffer — skip nodes that are almost out of disk space
@@ -41,10 +38,7 @@ export const distributionService = {
       lastSeenAt: { gte: threshold },
       usedBytes: { lt: prisma.storageNode.fields.pledgedBytes },
       // Allow nodes that haven't reported availableDiskBytes yet (null = unknown = ok)
-      OR: [
-        { availableDiskBytes: null },
-        { availableDiskBytes: { gt: MIN_DISK_BUFFER } },
-      ],
+      OR: [{ availableDiskBytes: null }, { availableDiskBytes: { gt: MIN_DISK_BUFFER } }],
     };
 
     // Fetch vault and swarm nodes separately so we can interleave vault-first
@@ -67,9 +61,7 @@ export const distributionService = {
     const candidates = [...vaultNodes, ...swarmNodes];
 
     if (candidates.length < shardCount) {
-      throw new Error(
-        `Not enough online nodes (need ${shardCount}, have ${candidates.length})`
-      );
+      throw new Error(`Not enough online nodes (need ${shardCount}, have ${candidates.length})`);
     }
 
     const assignments: ShardAssignment[] = [];
@@ -88,14 +80,7 @@ export const distributionService = {
   /**
    * Record that a chunk has been stored on a node.
    */
-  async recordChunkStored(params: {
-    fileId: string;
-    shardIndex: number;
-    isData: boolean;
-    sizeBytes: number;
-    chunkHash: string;
-    nodeId: string;
-  }): Promise<void> {
+  async recordChunkStored(params: { fileId: string; shardIndex: number; isData: boolean; sizeBytes: number; chunkHash: string; nodeId: string }): Promise<void> {
     const { fileId, shardIndex, isData, sizeBytes, chunkHash, nodeId } = params;
 
     const chunk = await prisma.fileChunk.upsert({
@@ -199,10 +184,7 @@ export const distributionService = {
 
       const totalShards = file.totalShards + file.parityShards;
       try {
-        const assignment = await distributionService.assignNodes(
-          fileId,
-          totalShards
-        );
+        const assignment = await distributionService.assignNodes(fileId, totalShards);
         // Cache the assignment and remove from the queue
         await redis.set(assignmentKey(fileId), JSON.stringify(assignment), "EX", ASSIGNMENT_TTL_S);
         await redis.srem(PENDING_QUEUE_KEY, fileId);

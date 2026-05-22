@@ -21,11 +21,21 @@ export default function App() {
 
   const refreshStatus = async () => {
     try {
-      const s = await window.swarmvault.getSettings() as { authToken: string | null; nodeId: string | null };
-      if (!s.authToken) { setStatusLabel("Not logged in"); setStatusOk(false); }
-      else if (!s.nodeId) { setStatusLabel("No node"); setStatusOk(false); }
-      else { setStatusLabel("Node active"); setStatusOk(true); }
-    } catch { setStatusLabel("Error"); setStatusOk(false); }
+      const s = (await window.swarmvault.getSettings()) as { authToken: string | null; nodeId: string | null };
+      if (!s.authToken) {
+        setStatusLabel("Not logged in");
+        setStatusOk(false);
+      } else if (!s.nodeId) {
+        setStatusLabel("No node");
+        setStatusOk(false);
+      } else {
+        setStatusLabel("Node active");
+        setStatusOk(true);
+      }
+    } catch {
+      setStatusLabel("Error");
+      setStatusOk(false);
+    }
   };
 
   useEffect(() => {
@@ -42,9 +52,7 @@ export default function App() {
         {/* Logo */}
         <div className="px-5 py-4 border-b border-slate-700">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center text-xs font-bold">
-              SV
-            </div>
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center text-xs font-bold">SV</div>
             <span className="font-semibold text-slate-100">SwarmVault</span>
           </div>
         </div>
@@ -55,12 +63,7 @@ export default function App() {
             <button
               key={id}
               onClick={() => setActiveTab(id)}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-                activeTab === id
-                  ? "bg-violet-600 text-white"
-                  : "text-slate-400 hover:text-slate-100 hover:bg-slate-700"
-              }`}
-            >
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${activeTab === id ? "bg-violet-600 text-white" : "text-slate-400 hover:text-slate-100 hover:bg-slate-700"}`}>
               <Icon size={16} />
               {label}
             </button>
@@ -70,12 +73,9 @@ export default function App() {
         {/* Status badge */}
         <div className="p-3 border-t border-slate-700">
           <div
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs cursor-pointer transition-colors ${
-              statusOk ? "bg-emerald-900/30 text-emerald-400" : "bg-slate-700/50 text-slate-500 hover:bg-slate-700"
-            }`}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs cursor-pointer transition-colors ${statusOk ? "bg-emerald-900/30 text-emerald-400" : "bg-slate-700/50 text-slate-500 hover:bg-slate-700"}`}
             onClick={() => setActiveTab("settings")}
-            title="Click to open Settings"
-          >
+            title="Click to open Settings">
             <div className={`w-2 h-2 rounded-full ${statusOk ? "bg-emerald-400 animate-pulse" : "bg-slate-500"}`} />
             {statusLabel}
           </div>

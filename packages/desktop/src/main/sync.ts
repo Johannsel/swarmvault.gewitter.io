@@ -85,16 +85,12 @@ export const syncClient = {
 
     // Populate manifest before starting the watcher so onFileAdded can skip
     // files that are already in sync.
-    await this.refreshManifest(settings).catch((e) =>
-      console.error("[sync] Manifest fetch failed:", e)
-    );
+    await this.refreshManifest(settings).catch((e) => console.error("[sync] Manifest fetch failed:", e));
 
     this.startWatcher(settings.syncDir);
 
     // Reconcile in the background — downloads anything missing locally.
-    this.reconcile(settings).catch((e) =>
-      console.error("[sync] Reconcile failed:", e)
-    );
+    this.reconcile(settings).catch((e) => console.error("[sync] Reconcile failed:", e));
   },
 
   // ─── Watcher ─────────────────────────────────────────────────────────────
@@ -213,8 +209,7 @@ export const syncClient = {
 
     // Find all locally synced files in this folder and delete them without trashing
     for (const [virtualPath] of serverManifest.entries()) {
-      const fileInFolder = virtualPath === folderVirtualPath ||
-        virtualPath.startsWith(normalised);
+      const fileInFolder = virtualPath === folderVirtualPath || virtualPath.startsWith(normalised);
       if (!fileInFolder) continue;
 
       const localPath = path.join(settings.syncDir, virtualPath.replace(/^\//, ""));
@@ -259,12 +254,7 @@ export const syncClient = {
    * - Omit it to register a new file (POST).
    * Returns the file's vault ID (useful for post-upload share refresh).
    */
-  async uploadFile(
-    filePath: string,
-    virtualPath: string,
-    settings: ReturnType<typeof storageManager.getSettings>,
-    existingFileId?: string
-  ): Promise<string | null> {
+  async uploadFile(filePath: string, virtualPath: string, settings: ReturnType<typeof storageManager.getSettings>, existingFileId?: string): Promise<string | null> {
     const data = await fs.readFile(filePath);
     const contentHash = sha256(data);
     const mimeType = "application/octet-stream";
@@ -285,9 +275,7 @@ export const syncClient = {
       encryptedMasterKey: encodeMasterKey(masterKey),
     };
 
-    const url = existingFileId
-      ? `${settings.serverUrl}/api/v1/files/${existingFileId}`
-      : `${settings.serverUrl}/api/v1/files`;
+    const url = existingFileId ? `${settings.serverUrl}/api/v1/files/${existingFileId}` : `${settings.serverUrl}/api/v1/files`;
     const method = existingFileId ? "PUT" : "POST";
 
     const regRes = await fetch(url, {
@@ -313,11 +301,7 @@ export const syncClient = {
     let shardAssignment = regData.shardAssignment;
     if (regData.queued || !shardAssignment) {
       console.log(`[sync] Queued — polling for shard assignment`);
-      shardAssignment = await this.pollForAssignment(
-        regData.file.id,
-        settings.serverUrl,
-        settings.authToken!
-      );
+      shardAssignment = await this.pollForAssignment(regData.file.id, settings.serverUrl, settings.authToken!);
       if (!shardAssignment) {
         throw new Error(`Timed out waiting for shard assignment for ${virtualPath}`);
       }
@@ -370,9 +354,7 @@ export const syncClient = {
 
   // ─── Manifest ─────────────────────────────────────────────────────────────
 
-  async refreshManifest(
-    settings: ReturnType<typeof storageManager.getSettings>
-  ): Promise<void> {
+  async refreshManifest(settings: ReturnType<typeof storageManager.getSettings>): Promise<void> {
     if (!settings.authToken) return;
     const res = await fetch(`${settings.serverUrl}/api/v1/files/manifest`, {
       headers: { Authorization: `Bearer ${settings.authToken}` },
@@ -386,9 +368,7 @@ export const syncClient = {
 
   // ─── Reconcile (startup mirror) ────────────────────────────────────────────
 
-  async reconcile(
-    settings: ReturnType<typeof storageManager.getSettings>
-  ): Promise<void> {
+  async reconcile(settings: ReturnType<typeof storageManager.getSettings>): Promise<void> {
     if (!settings.authToken) return;
 
     let downloaded = 0;
@@ -465,10 +445,7 @@ export const syncClient = {
 
   // ─── Share shadow refresh ─────────────────────────────────────────────────
 
-  async refreshShareShadow(
-    fileId: string,
-    settings: ReturnType<typeof storageManager.getSettings>
-  ): Promise<void> {
+  async refreshShareShadow(fileId: string, settings: ReturnType<typeof storageManager.getSettings>): Promise<void> {
     if (!settings.authToken) return;
     const check = await fetch(`${settings.serverUrl}/api/v1/files/${fileId}/share`, {
       headers: { Authorization: `Bearer ${settings.authToken}` },
@@ -493,11 +470,7 @@ export const syncClient = {
 
   // ─── Download ─────────────────────────────────────────────────────────────
 
-  async downloadFile(
-    fileId: string,
-    saveName: string,
-    settings: ReturnType<typeof storageManager.getSettings>
-  ): Promise<void> {
+  async downloadFile(fileId: string, saveName: string, settings: ReturnType<typeof storageManager.getSettings>): Promise<void> {
     const original = await this.downloadFileToBuffer(fileId, settings);
     const outPath = path.join(settings.syncDir, saveName);
     // Guard against path traversal: resolved path must stay inside syncDir
@@ -511,10 +484,7 @@ export const syncClient = {
     console.log(`[sync] Downloaded: ${saveName} (${original.length} bytes)`);
   },
 
-  async downloadFileToBuffer(
-    fileId: string,
-    settings: ReturnType<typeof storageManager.getSettings>
-  ): Promise<Buffer> {
+  async downloadFileToBuffer(fileId: string, settings: ReturnType<typeof storageManager.getSettings>): Promise<Buffer> {
     if (!settings.authToken) throw new Error("Not authenticated");
 
     const res = await fetch(`${settings.serverUrl}/api/v1/files/${fileId}/download`, {
@@ -562,10 +532,7 @@ export const syncClient = {
         statusChangeCallback?.(true);
         ws!.send(JSON.stringify({ type: "auth", payload: { nodeId, relayToken } }));
         this.sendHeartbeat(nodeId, relayToken);
-        heartbeatTimer = setInterval(
-          () => this.sendHeartbeat(nodeId, relayToken),
-          HEARTBEAT_INTERVAL_MS
-        );
+        heartbeatTimer = setInterval(() => this.sendHeartbeat(nodeId, relayToken), HEARTBEAT_INTERVAL_MS);
       };
 
       ws.onmessage = (event) => {
@@ -593,10 +560,7 @@ export const syncClient = {
   async sendHeartbeat(nodeId: string, relayToken: string): Promise<void> {
     if (!ws || ws.readyState !== WebSocketLib.OPEN) return;
     const settings = storageManager.getSettings();
-    const [usedBytes, availableDiskBytes] = await Promise.all([
-      storageManager.getUsedBytes(),
-      storageManager.getAvailableDiskBytes(),
-    ]);
+    const [usedBytes, availableDiskBytes] = await Promise.all([storageManager.getUsedBytes(), storageManager.getAvailableDiskBytes()]);
     ws.send(
       JSON.stringify({
         type: "heartbeat",
@@ -608,7 +572,7 @@ export const syncClient = {
           pledgedBytes: settings.pledgedBytes,
           availableDiskBytes,
         },
-      })
+      }),
     );
   },
 
@@ -623,7 +587,7 @@ export const syncClient = {
             JSON.stringify({
               type: "chunk_response",
               payload: { fileId, shardIndex, data: data.toString("base64"), chunkHash: sha256(data) },
-            })
+            }),
           );
         })
         .catch((err) => {
@@ -648,7 +612,7 @@ export const syncClient = {
             JSON.stringify({
               type: "chunk_ack",
               payload: { fileId, shardIndex, success: true, chunkHash },
-            })
+            }),
           );
         })
         .catch((err) => {
@@ -657,7 +621,7 @@ export const syncClient = {
             JSON.stringify({
               type: "chunk_ack",
               payload: { fileId, shardIndex, success: false, chunkHash },
-            })
+            }),
           );
         });
       return;
@@ -696,11 +660,7 @@ export const syncClient = {
     });
   },
 
-  async pollForAssignment(
-    fileId: string,
-    serverUrl: string,
-    authToken: string
-  ): Promise<{ shardIndex: number; nodeId: string; nodeRelayToken: string }[] | null> {
+  async pollForAssignment(fileId: string, serverUrl: string, authToken: string): Promise<{ shardIndex: number; nodeId: string; nodeRelayToken: string }[] | null> {
     const POLL_INTERVAL_MS = 10_000;
     const MAX_ATTEMPTS = 30;
 

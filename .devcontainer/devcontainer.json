@@ -13,12 +13,7 @@
 
   "customizations": {
     "vscode": {
-      "extensions": [
-        "Prisma.prisma",
-        "dbaeumer.vscode-eslint",
-        "esbenp.prettier-vscode",
-        "ms-azuretools.vscode-docker"
-      ],
+      "extensions": ["Prisma.prisma", "dbaeumer.vscode-eslint", "esbenp.prettier-vscode", "ms-azuretools.vscode-docker"],
       "settings": {
         "terminal.integrated.defaultProfile.linux": "zsh"
       }

@@ -38,10 +38,7 @@ export default function Rewards() {
 
   useEffect(() => {
     window.swarmvault.getRewards().then(setData).catch(console.error);
-    const timer = setInterval(
-      () => window.swarmvault.getRewards().then(setData).catch(console.error),
-      30_000
-    );
+    const timer = setInterval(() => window.swarmvault.getRewards().then(setData).catch(console.error), 30_000);
     return () => clearInterval(timer);
   }, []);
 
@@ -68,8 +65,7 @@ export default function Rewards() {
         <div className="flex items-start gap-2.5 bg-red-900/25 border border-red-500/30 rounded-xl p-3.5 text-xs text-red-300">
           <AlertTriangle size={14} className="shrink-0 mt-0.5" />
           <span>
-            Your effective uptime is <strong>{latestUptime.toFixed(0)}%</strong> — below the 50% threshold.
-            You&apos;re currently earning <strong>no credits</strong>. Keep this app running consistently to cross 50%.
+            Your effective uptime is <strong>{latestUptime.toFixed(0)}%</strong> — below the 50% threshold. You&apos;re currently earning <strong>no credits</strong>. Keep this app running consistently to cross 50%.
           </span>
         </div>
       )}
@@ -80,9 +76,7 @@ export default function Rewards() {
           <div className="text-xs text-slate-400 flex items-center gap-1.5">
             <Trophy size={12} className="text-yellow-400" /> Current Credits
           </div>
-          <div className="text-3xl font-bold text-yellow-400">
-            {data?.balance?.credits?.toFixed(2) ?? "—"}
-          </div>
+          <div className="text-3xl font-bold text-yellow-400">{data?.balance?.credits?.toFixed(2) ?? "—"}</div>
           <div className="text-xs text-slate-500">available to spend</div>
         </div>
 
@@ -106,11 +100,9 @@ export default function Rewards() {
         <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-4 flex items-center gap-3 text-xs text-slate-400">
           <Info size={14} className="shrink-0 text-slate-500" />
           <span>
-            At your current rate: <span className="text-yellow-400 font-medium">~{projectedDaily.toFixed(3)} credits/day</span>
-            {" "}≈ <span className="text-cyan-400 font-medium">{formatBytes(projectedDaily * (data?.creditsToBytes ?? 1e9))}</span> of extra quota per day.
-            {latestUptime != null && latestUptime >= 50 && latestUptime < 80 && (
-              <span className="text-amber-400"> Reach 80% uptime for full rewards.</span>
-            )}
+            At your current rate: <span className="text-yellow-400 font-medium">~{projectedDaily.toFixed(3)} credits/day</span> ≈{" "}
+            <span className="text-cyan-400 font-medium">{formatBytes(projectedDaily * (data?.creditsToBytes ?? 1e9))}</span> of extra quota per day.
+            {latestUptime != null && latestUptime >= 50 && latestUptime < 80 && <span className="text-amber-400"> Reach 80% uptime for full rewards.</span>}
           </span>
         </div>
       )}
@@ -143,28 +135,30 @@ export default function Rewards() {
             <div className="w-28 h-1.5 rounded-full bg-slate-700 overflow-hidden">
               <div className="h-full rounded-full bg-red-500" style={{ width: "33%" }} />
             </div>
-            <span>Below 50% → <span className="text-red-400">no reward</span></span>
+            <span>
+              Below 50% → <span className="text-red-400">no reward</span>
+            </span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-28 h-1.5 rounded-full bg-slate-700 overflow-hidden">
               <div className="h-full rounded-full bg-amber-400" style={{ width: "66%" }} />
             </div>
-            <span>50–80% → <span className="text-amber-400">partial reward (linear ramp)</span></span>
+            <span>
+              50–80% → <span className="text-amber-400">partial reward (linear ramp)</span>
+            </span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-28 h-1.5 rounded-full bg-slate-700 overflow-hidden">
               <div className="h-full rounded-full bg-emerald-400" style={{ width: "100%" }} />
             </div>
-            <span>≥ 80% → <span className="text-emerald-400">full reward</span></span>
+            <span>
+              ≥ 80% → <span className="text-emerald-400">full reward</span>
+            </span>
           </div>
         </div>
 
-        <p className="text-xs text-slate-500 pt-1 font-mono bg-slate-900/60 rounded p-2.5">
-          credits/hour = pledged_gb × (1/24) × uptime_factor × tier_multiplier
-        </p>
-        <p className="text-xs text-slate-600">
-          Tier is assigned automatically: nodes with ≥ 80% 7-day uptime are promoted to Vault tier.
-        </p>
+        <p className="text-xs text-slate-500 pt-1 font-mono bg-slate-900/60 rounded p-2.5">credits/hour = pledged_gb × (1/24) × uptime_factor × tier_multiplier</p>
+        <p className="text-xs text-slate-600">Tier is assigned automatically: nodes with ≥ 80% 7-day uptime are promoted to Vault tier.</p>
       </div>
 
       {/* Recent snapshots */}
@@ -173,27 +167,21 @@ export default function Rewards() {
           <h2 className="text-sm font-medium text-slate-300 flex items-center gap-1.5">
             <Clock size={13} /> Recent Hourly Snapshots
           </h2>
-          <p className="text-xs text-slate-500">
-            Uptime shown is the effective 3-month rolling average used for reward calculation.
-            New nodes use a 7-day window until enough history accumulates (≥24 snapshots).
-          </p>
+          <p className="text-xs text-slate-500">Uptime shown is the effective 3-month rolling average used for reward calculation. New nodes use a 7-day window until enough history accumulates (≥24 snapshots).</p>
           <div className="space-y-1.5 max-h-64 overflow-y-auto">
             {recentSnaps.map((snap) => {
               const badge = uptimeBadge(snap.uptimePct);
               return (
-                <div
-                  key={snap.id}
-                  className="flex items-center justify-between text-xs py-1.5 border-b border-slate-700/50 last:border-0"
-                >
+                <div key={snap.id} className="flex items-center justify-between text-xs py-1.5 border-b border-slate-700/50 last:border-0">
                   <div className="text-slate-400 space-x-1.5">
                     <span>{new Date(snap.snapshotAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
                     <span className={snap.tier === "vault" ? "text-violet-300" : "text-cyan-300"}>{snap.tier}</span>
                     <span>{formatBytes(Number(snap.pledgedBytes))} pledged</span>
-                    <span className={badge.color}>{snap.uptimePct.toFixed(0)}% — {badge.label}</span>
+                    <span className={badge.color}>
+                      {snap.uptimePct.toFixed(0)}% — {badge.label}
+                    </span>
                   </div>
-                  <div className="text-yellow-400 font-medium shrink-0 ml-2">
-                    +{snap.creditsEarned.toFixed(4)} cr
-                  </div>
+                  <div className="text-yellow-400 font-medium shrink-0 ml-2">+{snap.creditsEarned.toFixed(4)} cr</div>
                 </div>
               );
             })}
@@ -203,4 +191,3 @@ export default function Rewards() {
     </div>
   );
 }
-

@@ -13,18 +13,10 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import { existsSync, mkdirSync } from "node:fs";
 import Store from "electron-store";
-import {
-  encryptChunk,
-  decryptChunk,
-  deriveShardKey,
-  decodeMasterKey,
-  serializeEncryptedChunk,
-  deserializeEncryptedChunk,
-  sha256,
-} from "@swarmvault/shared";
+import { encryptChunk, decryptChunk, deriveShardKey, decodeMasterKey, serializeEncryptedChunk, deserializeEncryptedChunk, sha256 } from "@swarmvault/shared";
 
 interface Settings {
-  pledgedBytes: number;         // bytes contributed to swarm
+  pledgedBytes: number; // bytes contributed to swarm
   /** @deprecated Tier is now auto-assigned by the server based on uptime. */
   tier: "vault" | "swarm";
   chunkDir: string;
@@ -44,10 +36,7 @@ interface Settings {
 
 const DEFAULT_CHUNK_DIR = path.join(app.getPath("userData"), "chunks");
 const DEFAULT_SYNC_DIR = path.join(app.getPath("home"), "SwarmVault");
-const DEFAULT_SERVER_URL =
-  process.env.NODE_ENV === "development"
-    ? "http://localhost:3000"
-    : "https://api.swarmvault.gewitter.io";
+const DEFAULT_SERVER_URL = process.env.NODE_ENV === "development" ? "http://localhost:3000" : "https://api.swarmvault.gewitter.io";
 
 // Short-lived cache so hasCapacity() doesn't hammer the filesystem on every chunk write
 let _usedBytesCache: { value: number; at: number } | null = null;
@@ -65,7 +54,7 @@ const store = new Store<Settings>({
     relayToken: null,
     authToken: null,
     contributionPaused: false,
-    syncedFolders: [],  // empty = sync all
+    syncedFolders: [], // empty = sync all
   },
 });
 
@@ -118,12 +107,7 @@ export const storageManager = {
     return path.join(store.get("chunkDir"), prefix, `${chunkId}.svchunk`);
   },
 
-  async writeChunk(
-    chunkId: string,
-    plaintext: Buffer,
-    masterKey: string,
-    shardIndex: number
-  ): Promise<string> {
+  async writeChunk(chunkId: string, plaintext: Buffer, masterKey: string, shardIndex: number): Promise<string> {
     if (!(await this.hasCapacity(plaintext.length))) {
       throw new Error(`[storage] Refusing chunk ${chunkId}: capacity limit reached`);
     }
@@ -160,11 +144,7 @@ export const storageManager = {
     return fs.readFile(this.chunkPath(chunkId));
   },
 
-  async readChunk(
-    chunkId: string,
-    masterKey: string,
-    shardIndex: number
-  ): Promise<Buffer> {
+  async readChunk(chunkId: string, masterKey: string, shardIndex: number): Promise<Buffer> {
     const p = this.chunkPath(chunkId);
     const serialized = await fs.readFile(p);
     const encrypted = deserializeEncryptedChunk(serialized);
@@ -239,12 +219,7 @@ export const storageManager = {
     console.log(`[storage] Shutdown in ${delaySeconds} seconds…`);
     setTimeout(() => {
       const { exec } = require("node:child_process");
-      const cmd =
-        process.platform === "win32"
-          ? `shutdown /s /t 0`
-          : process.platform === "darwin"
-          ? "osascript -e 'tell application \"System Events\" to shut down'"
-          : "shutdown -h now";
+      const cmd = process.platform === "win32" ? `shutdown /s /t 0` : process.platform === "darwin" ? "osascript -e 'tell application \"System Events\" to shut down'" : "shutdown -h now";
       exec(cmd);
     }, delaySeconds * 1000);
   },

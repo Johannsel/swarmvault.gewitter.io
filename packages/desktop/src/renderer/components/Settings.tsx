@@ -32,7 +32,10 @@ export default function SettingsPanel() {
     sufficient: boolean;
   } | null>(null);
   const [nodeStatus, setNodeStatus] = useState<{
-    tier: string; uptimePct: number; uptimePct3m: number | null; status: string;
+    tier: string;
+    uptimePct: number;
+    uptimePct3m: number | null;
+    status: string;
   } | null>(null);
 
   // Auth form
@@ -45,16 +48,22 @@ export default function SettingsPanel() {
   const [loggedInUser, setLoggedInUser] = useState<{ email: string; username: string } | null>(null);
 
   const reload = async () => {
-    const s = await window.swarmvault.getSettings() as Settings;
+    const s = (await window.swarmvault.getSettings()) as Settings;
     setSettings(s);
     setPledgedGb(Math.round(bytesToGb(s.pledgedBytes)));
     // Refresh disk stats + live node status in the background
-    window.swarmvault.getStorageStats().then((stats: { availableDiskBytes: number | null; sufficient: boolean }) => {
-      setStorageStats(stats);
-    }).catch(() => null);
-    window.swarmvault.getNodeStatus().then((n: { tier: string; uptimePct: number; uptimePct3m: number | null; status: string } | null) => {
-      setNodeStatus(n);
-    }).catch(() => null);
+    window.swarmvault
+      .getStorageStats()
+      .then((stats: { availableDiskBytes: number | null; sufficient: boolean }) => {
+        setStorageStats(stats);
+      })
+      .catch(() => null);
+    window.swarmvault
+      .getNodeStatus()
+      .then((n: { tier: string; uptimePct: number; uptimePct3m: number | null; status: string } | null) => {
+        setNodeStatus(n);
+      })
+      .catch(() => null);
     // If authToken is set but we don't know who's logged in, just show token as indicator
     if (s.authToken && !loggedInUser) {
       setLoggedInUser({ email: "—", username: "—" });
@@ -77,14 +86,17 @@ export default function SettingsPanel() {
     setAuthLoading(true);
     try {
       if (authMode === "login") {
-        const user = await window.swarmvault.login(email, password) as { email: string; username: string };
+        const user = (await window.swarmvault.login(email, password)) as { email: string; username: string };
         setLoggedInUser(user);
-        setEmail(""); setPassword("");
+        setEmail("");
+        setPassword("");
         await reload();
       } else {
-        const user = await window.swarmvault.register(email, username, password) as { email: string; username: string };
+        const user = (await window.swarmvault.register(email, username, password)) as { email: string; username: string };
         setLoggedInUser(user);
-        setEmail(""); setUsername(""); setPassword("");
+        setEmail("");
+        setUsername("");
+        setPassword("");
         await reload();
       }
     } catch (err: unknown) {
@@ -116,10 +128,10 @@ export default function SettingsPanel() {
     try {
       await window.swarmvault.registerNode({
         displayName: `My PC`,
-        tier: "swarm",  // server auto-promotes based on uptime
+        tier: "swarm", // server auto-promotes based on uptime
         pledgedBytes: gbToBytes(pledgedGb),
       });
-      const updated = await window.swarmvault.getSettings() as Settings;
+      const updated = (await window.swarmvault.getSettings()) as Settings;
       setSettings(updated);
     } catch (err) {
       console.error("Node registration failed:", err);
@@ -147,17 +159,10 @@ export default function SettingsPanel() {
         {isLoggedIn ? (
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-sm text-emerald-400 font-medium">
-                ✓ Logged in
-              </div>
-              {loggedInUser && loggedInUser.email !== "—" && (
-                <div className="text-xs text-slate-400 mt-0.5">{loggedInUser.email}</div>
-              )}
+              <div className="text-sm text-emerald-400 font-medium">✓ Logged in</div>
+              {loggedInUser && loggedInUser.email !== "—" && <div className="text-xs text-slate-400 mt-0.5">{loggedInUser.email}</div>}
             </div>
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-red-900/40 hover:text-red-300 transition-colors text-slate-400"
-            >
+            <button onClick={handleLogout} className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-red-900/40 hover:text-red-300 transition-colors text-slate-400">
               <LogOut size={13} /> Log out
             </button>
           </div>
@@ -166,15 +171,19 @@ export default function SettingsPanel() {
             {/* Login / Register toggle */}
             <div className="flex gap-2">
               <button
-                onClick={() => { setAuthMode("login"); setAuthError(""); }}
-                className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-colors ${authMode === "login" ? "bg-violet-600 text-white" : "bg-slate-700 text-slate-400 hover:text-slate-200"}`}
-              >
+                onClick={() => {
+                  setAuthMode("login");
+                  setAuthError("");
+                }}
+                className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-colors ${authMode === "login" ? "bg-violet-600 text-white" : "bg-slate-700 text-slate-400 hover:text-slate-200"}`}>
                 <LogIn size={13} /> Log in
               </button>
               <button
-                onClick={() => { setAuthMode("register"); setAuthError(""); }}
-                className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-colors ${authMode === "register" ? "bg-violet-600 text-white" : "bg-slate-700 text-slate-400 hover:text-slate-200"}`}
-              >
+                onClick={() => {
+                  setAuthMode("register");
+                  setAuthError("");
+                }}
+                className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-colors ${authMode === "register" ? "bg-violet-600 text-white" : "bg-slate-700 text-slate-400 hover:text-slate-200"}`}>
                 <UserPlus size={13} /> Register
               </button>
             </div>
@@ -208,17 +217,12 @@ export default function SettingsPanel() {
               />
             </div>
 
-            {authError && (
-              <div className="text-xs text-red-400 bg-red-900/20 rounded-lg px-3 py-2">
-                {authError}
-              </div>
-            )}
+            {authError && <div className="text-xs text-red-400 bg-red-900/20 rounded-lg px-3 py-2">{authError}</div>}
 
             <button
               onClick={handleAuth}
               disabled={authLoading || !email || !password || (authMode === "register" && !username)}
-              className="w-full py-2.5 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-sm font-medium transition-colors"
-            >
+              className="w-full py-2.5 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-sm font-medium transition-colors">
               {authLoading ? "…" : authMode === "login" ? "Log in" : "Create account"}
             </button>
           </div>
@@ -231,69 +235,41 @@ export default function SettingsPanel() {
 
         <div className="space-y-2">
           <div className="text-xs bg-slate-700/60 rounded-lg px-4 py-3 text-slate-400 leading-relaxed">
-            <span className="text-violet-300 font-medium">Tier is automatic.</span>{" "}
-            Nodes with ≥ 80% uptime are automatically promoted to{" "}
-            <span className="text-violet-300">Vault tier</span> and earn higher rewards.
-            Nodes below 80% stay on <span className="text-cyan-300">Swarm tier</span>.
-            Keep your PC online to earn more.
+            <span className="text-violet-300 font-medium">Tier is automatic.</span> Nodes with ≥ 80% uptime are automatically promoted to <span className="text-violet-300">Vault tier</span> and earn higher rewards. Nodes below 80% stay on{" "}
+            <span className="text-cyan-300">Swarm tier</span>. Keep your PC online to earn more.
           </div>
         </div>
 
         {!settings.nodeId ? (
-        <div className="space-y-2">
-          <label className="text-xs text-slate-400">
-            Pledged Storage: <span className="text-white font-medium">{pledgedGb} GB</span>
-              {storageStats?.availableDiskBytes != null && (
-                <span className="ml-2 text-slate-500">
-                  · {Math.floor(storageStats.availableDiskBytes / 1024 ** 3)} GB free on disk
-                </span>
-              )}
-              <span className="ml-2 text-slate-600">
-                · ~{(pledgedGb / 24).toFixed(3)} cr/day at full uptime (swarm)
-              </span>
+          <div className="space-y-2">
+            <label className="text-xs text-slate-400">
+              Pledged Storage: <span className="text-white font-medium">{pledgedGb} GB</span>
+              {storageStats?.availableDiskBytes != null && <span className="ml-2 text-slate-500">· {Math.floor(storageStats.availableDiskBytes / 1024 ** 3)} GB free on disk</span>}
+              <span className="ml-2 text-slate-600">· ~{(pledgedGb / 24).toFixed(3)} cr/day at full uptime (swarm)</span>
             </label>
-            <input
-              type="range"
-              min={5}
-              max={2000}
-              step={5}
-              value={pledgedGb}
-              onChange={(e) => setPledgedGb(Number(e.target.value))}
-              className="w-full accent-violet-500"
-            />
+            <input type="range" min={5} max={2000} step={5} value={pledgedGb} onChange={(e) => setPledgedGb(Number(e.target.value))} className="w-full accent-violet-500" />
             <div className="flex justify-between text-xs text-slate-500">
               <span>5 GB</span>
               <span>2 TB</span>
             </div>
-            {storageStats?.availableDiskBytes != null &&
-              pledgedGb * 1024 ** 3 > storageStats.availableDiskBytes && (
-                <div className="flex items-start gap-2 text-xs px-3 py-2 rounded-lg bg-amber-900/30 text-amber-400">
-                  <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
-                  <span>
-                    Only {Math.floor(storageStats.availableDiskBytes / 1024 ** 3)} GB is free on disk.
-                    Your pledge exceeds available space — reduce it or free up disk space to avoid
-                    write failures.
-                  </span>
-                </div>
-              )}
-          <button
-            onClick={handleRegisterNode}
-            className="w-full py-2.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-sm font-medium transition-colors"
-          >
-            Register This PC as a Node
-          </button>
-        </div>
+            {storageStats?.availableDiskBytes != null && pledgedGb * 1024 ** 3 > storageStats.availableDiskBytes && (
+              <div className="flex items-start gap-2 text-xs px-3 py-2 rounded-lg bg-amber-900/30 text-amber-400">
+                <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
+                <span>Only {Math.floor(storageStats.availableDiskBytes / 1024 ** 3)} GB is free on disk. Your pledge exceeds available space — reduce it or free up disk space to avoid write failures.</span>
+              </div>
+            )}
+            <button onClick={handleRegisterNode} className="w-full py-2.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-sm font-medium transition-colors">
+              Register This PC as a Node
+            </button>
+          </div>
         ) : (
           <div className="text-xs text-emerald-400 flex items-center gap-1.5">
-            ✓ Node registered{" "}
-            <code className="text-slate-300">{settings.nodeId?.slice(0, 8)}…</code>
+            ✓ Node registered <code className="text-slate-300">{settings.nodeId?.slice(0, 8)}…</code>
             {nodeStatus && (
               <span className="ml-2 text-slate-400">
                 · <span className={nodeStatus.tier === "vault" ? "text-violet-300" : "text-cyan-300"}>{nodeStatus.tier}</span>
                 {" · "}
-                <span className={nodeStatus.uptimePct >= 80 ? "text-emerald-400" : nodeStatus.uptimePct >= 50 ? "text-amber-400" : "text-red-400"}>
-                  {(nodeStatus.uptimePct3m ?? nodeStatus.uptimePct).toFixed(0)}% uptime
-                </span>
+                <span className={nodeStatus.uptimePct >= 80 ? "text-emerald-400" : nodeStatus.uptimePct >= 50 ? "text-amber-400" : "text-red-400"}>{(nodeStatus.uptimePct3m ?? nodeStatus.uptimePct).toFixed(0)}% uptime</span>
               </span>
             )}
           </div>
@@ -310,13 +286,12 @@ export default function SettingsPanel() {
           <input
             type="text"
             value={settings.syncDir}
-            onChange={(e) => setSettings((s) => s ? { ...s, syncDir: e.target.value } : s)}
+            onChange={(e) => setSettings((s) => (s ? { ...s, syncDir: e.target.value } : s))}
             className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-violet-500"
           />
           <div className="flex items-start gap-1.5 text-xs text-slate-500">
             <Info size={11} className="shrink-0 mt-0.5" />
-            Files here are AES-256-GCM encrypted on your device before upload. The server never sees your data.
-            Changes are detected automatically and synced in real time.
+            Files here are AES-256-GCM encrypted on your device before upload. The server never sees your data. Changes are detected automatically and synced in real time.
           </div>
         </div>
 
@@ -335,7 +310,7 @@ export default function SettingsPanel() {
           <input
             type="text"
             value={settings.serverUrl}
-            onChange={(e) => setSettings((s) => s ? { ...s, serverUrl: e.target.value } : s)}
+            onChange={(e) => setSettings((s) => (s ? { ...s, serverUrl: e.target.value } : s))}
             className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-violet-500"
           />
           <div className="flex items-start gap-1.5 text-xs text-slate-500">
@@ -346,12 +321,7 @@ export default function SettingsPanel() {
       </section>
 
       {/* Save */}
-      <button
-        onClick={handleSave}
-        className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-          saved ? "bg-emerald-600 text-white" : "bg-violet-600 hover:bg-violet-500 text-white"
-        }`}
-      >
+      <button onClick={handleSave} className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-colors ${saved ? "bg-emerald-600 text-white" : "bg-violet-600 hover:bg-violet-500 text-white"}`}>
         <Save size={15} />
         {saved ? "Saved!" : "Save Settings"}
       </button>

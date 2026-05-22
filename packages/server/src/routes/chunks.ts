@@ -16,11 +16,7 @@ type ChunkFastify = FastifyInstance & {
 
 export async function chunkRoutes(fastify: ChunkFastify): Promise<void> {
   // Accept raw binary bodies for this plugin scope
-  fastify.addContentTypeParser(
-    "application/octet-stream",
-    { parseAs: "buffer" },
-    (_req, body, done) => done(null, body)
-  );
+  fastify.addContentTypeParser("application/octet-stream", { parseAs: "buffer" }, (_req, body, done) => done(null, body));
 
   const preHandler = [fastify.authenticate];
 
@@ -111,7 +107,7 @@ export async function chunkRoutes(fastify: ChunkFastify): Promise<void> {
           isData,
           data: body.toString("base64"),
         },
-      })
+      }),
     );
 
     const acked = await ackPromise;

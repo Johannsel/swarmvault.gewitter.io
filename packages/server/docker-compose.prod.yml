@@ -97,4 +97,3 @@ secrets:
     file: ./.secrets/postgres_password.txt
   redis_password:
     file: ./.secrets/redis_password.txt
-

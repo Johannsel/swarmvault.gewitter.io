@@ -5,10 +5,7 @@ import { FastifyRequest, FastifyReply } from "fastify";
  * to `request.user`.  Register via `fastify.decorate` and use as a preHandler
  * hook on protected routes.
  */
-export async function requireAuth(
-  request: FastifyRequest,
-  reply: FastifyReply
-): Promise<void> {
+export async function requireAuth(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   try {
     await request.jwtVerify();
   } catch {

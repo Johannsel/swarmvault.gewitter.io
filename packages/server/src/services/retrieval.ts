@@ -41,12 +41,7 @@ export const retrievalService = {
    *
    * Throws with a `statusCode` property so callers can set the HTTP status.
    */
-  async fetchAllShards(
-    fileId: string,
-    ownerId: string,
-    nodeConnections: Map<string, WebSocket>,
-    pendingChunkResponses: Map<string, (data: Buffer | null) => void>
-  ): Promise<RetrievalResult> {
+  async fetchAllShards(fileId: string, ownerId: string, nodeConnections: Map<string, WebSocket>, pendingChunkResponses: Map<string, (data: Buffer | null) => void>): Promise<RetrievalResult> {
     const file = await prisma.swarmFile.findFirst({
       where: { id: fileId, ownerId },
       include: {
@@ -70,9 +65,7 @@ export const retrievalService = {
     // Fire requests for every shard in parallel
     const shardPromises = file.chunks.map(async (chunk): Promise<ShardData | null> => {
       // Pick the first connected node that holds this shard
-      const connectedNodeId = chunk.locations
-        .map((loc) => loc.nodeId)
-        .find((nid) => nodeConnections.has(nid));
+      const connectedNodeId = chunk.locations.map((loc) => loc.nodeId).find((nid) => nodeConnections.has(nid));
 
       if (!connectedNodeId) {
         return null; // shard not reachable right now
@@ -99,7 +92,7 @@ export const retrievalService = {
         JSON.stringify({
           type: "chunk_request",
           payload: { fileId, shardIndex: chunk.shardIndex },
-        })
+        }),
       );
 
       const data = await responsePromise;
@@ -113,13 +106,7 @@ export const retrievalService = {
 
     // Need at least `totalShards` data shards to allow reconstruction
     if (shards.length < file.totalShards) {
-      throw Object.assign(
-        new Error(
-          `Only ${shards.length} of ${file.totalShards} required shards are currently reachable. ` +
-            `Try again when more nodes are online.`
-        ),
-        { statusCode: 503 }
-      );
+      throw Object.assign(new Error(`Only ${shards.length} of ${file.totalShards} required shards are currently reachable. ` + `Try again when more nodes are online.`), { statusCode: 503 });
     }
 
     return {

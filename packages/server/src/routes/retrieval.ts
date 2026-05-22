@@ -36,37 +36,28 @@ export async function retrievalRoutes(fastify: RetrievalFastify): Promise<void> 
    *   shards: [{ index, data, chunkHash }]  // data is base64
    * }
    */
-  fastify.get<{ Params: { id: string } }>(
-    "/:id/download",
-    { preHandler },
-    async (request, reply) => {
-      const payload = request.user as { sub: string };
-      const { id: fileId } = request.params;
+  fastify.get<{ Params: { id: string } }>("/:id/download", { preHandler }, async (request, reply) => {
+    const payload = request.user as { sub: string };
+    const { id: fileId } = request.params;
 
-      try {
-        const result = await retrievalService.fetchAllShards(
-          fileId,
-          payload.sub,
-          fastify.nodeConnections,
-          fastify.pendingChunkResponses
-        );
+    try {
+      const result = await retrievalService.fetchAllShards(fileId, payload.sub, fastify.nodeConnections, fastify.pendingChunkResponses);
 
-        return reply.send({
-          name: result.name,
-          sizeBytes: result.sizeBytes,
-          encryptedMasterKey: result.encryptedMasterKey,
-          totalShards: result.totalShards,
-          parityShards: result.parityShards,
-          shards: result.shards.map((s) => ({
-            index: s.index,
-            data: s.data.toString("base64"),
-            chunkHash: s.chunkHash,
-          })),
-        });
-      } catch (err: unknown) {
-        const e = err as { statusCode?: number; message: string };
-        return reply.status(e.statusCode ?? 500).send({ error: e.message });
-      }
+      return reply.send({
+        name: result.name,
+        sizeBytes: result.sizeBytes,
+        encryptedMasterKey: result.encryptedMasterKey,
+        totalShards: result.totalShards,
+        parityShards: result.parityShards,
+        shards: result.shards.map((s) => ({
+          index: s.index,
+          data: s.data.toString("base64"),
+          chunkHash: s.chunkHash,
+        })),
+      });
+    } catch (err: unknown) {
+      const e = err as { statusCode?: number; message: string };
+      return reply.status(e.statusCode ?? 500).send({ error: e.message });
     }
-  );
+  });
 }

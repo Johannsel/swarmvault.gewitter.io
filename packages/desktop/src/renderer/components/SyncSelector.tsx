@@ -28,10 +28,7 @@ export default function SyncSelector() {
 
   useEffect(() => {
     const init = async () => {
-      const [filesRes, synced] = await Promise.all([
-        window.swarmvault.listFiles({}).catch(() => null) as Promise<{ files: { path: string }[] } | null>,
-        window.swarmvault.getSyncedFolders().catch(() => [] as string[]),
-      ]);
+      const [filesRes, synced] = await Promise.all([window.swarmvault.listFiles({}).catch(() => null) as Promise<{ files: { path: string }[] } | null>, window.swarmvault.getSyncedFolders().catch(() => [] as string[])]);
       const paths = (filesRes?.files ?? []).map((f) => f.path);
       setFolders(deriveFolders(paths));
       setSyncedFolders(synced);
@@ -88,46 +85,28 @@ export default function SyncSelector() {
   }
 
   if (folders.length === 0) {
-    return (
-      <p className="text-xs text-slate-500 py-2">
-        No folders yet. Drop files into your sync directory to get started — they&apos;ll appear here once uploaded.
-      </p>
-    );
+    return <p className="text-xs text-slate-500 py-2">No folders yet. Drop files into your sync directory to get started — they&apos;ll appear here once uploaded.</p>;
   }
 
   return (
     <div className="space-y-1.5">
-      {syncedFolders.length === 0 && (
-        <p className="text-xs text-slate-500 pb-1">
-          All folders are synced to this device. Uncheck a folder to stop keeping a local copy
-          — your files remain safely in the vault.
-        </p>
-      )}
+      {syncedFolders.length === 0 && <p className="text-xs text-slate-500 pb-1">All folders are synced to this device. Uncheck a folder to stop keeping a local copy — your files remain safely in the vault.</p>}
       {folders.map(({ virtualPath, fileCount }) => {
         const selected = isSelected(virtualPath);
         const spinning = loadingFolder === virtualPath;
 
         return (
-          <label
-            key={virtualPath}
-            className="flex items-center gap-3 px-3 py-2 rounded-lg bg-slate-800 cursor-pointer hover:bg-slate-700 transition-colors select-none"
-          >
+          <label key={virtualPath} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-slate-800 cursor-pointer hover:bg-slate-700 transition-colors select-none">
             {spinning ? (
               <Loader2 size={15} className="animate-spin text-violet-400 flex-shrink-0" />
             ) : (
-              <input
-                type="checkbox"
-                checked={selected}
-                onChange={(e) => handleToggle(virtualPath, e.target.checked)}
-                className="accent-violet-500"
-                disabled={spinning}
-              />
+              <input type="checkbox" checked={selected} onChange={(e) => handleToggle(virtualPath, e.target.checked)} className="accent-violet-500" disabled={spinning} />
             )}
             <FolderIcon size={14} className={selected ? "text-violet-300" : "text-slate-500"} />
-            <span className={`text-sm flex-1 ${selected ? "text-slate-200" : "text-slate-500"}`}>
-              {virtualPath === "/" ? "/ (top-level files)" : virtualPath.replace(/^\//, "")}
+            <span className={`text-sm flex-1 ${selected ? "text-slate-200" : "text-slate-500"}`}>{virtualPath === "/" ? "/ (top-level files)" : virtualPath.replace(/^\//, "")}</span>
+            <span className="text-xs text-slate-600">
+              {fileCount} file{fileCount !== 1 ? "s" : ""}
             </span>
-            <span className="text-xs text-slate-600">{fileCount} file{fileCount !== 1 ? "s" : ""}</span>
           </label>
         );
       })}

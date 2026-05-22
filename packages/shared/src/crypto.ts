@@ -11,9 +11,9 @@
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from "node:crypto";
 
 const ALGORITHM = "aes-256-gcm";
-const KEY_BYTES = 32;  // 256 bits
-const IV_BYTES = 12;   // 96-bit IV — GCM standard
-const TAG_BYTES = 16;  // 128-bit auth tag
+const KEY_BYTES = 32; // 256 bits
+const IV_BYTES = 12; // 96-bit IV — GCM standard
+const TAG_BYTES = 16; // 128-bit auth tag
 
 export interface EncryptedChunk {
   /** Encrypted data (ciphertext) */
@@ -37,11 +37,7 @@ export function generateMasterKey(): Buffer {
  */
 export function deriveShardKey(masterKey: Buffer, shardIndex: number): Buffer {
   const info = Buffer.from(`swarmvault-shard-${shardIndex}`);
-  return createHash("sha256")
-    .update(masterKey)
-    .update(info)
-    .digest()
-    .subarray(0, KEY_BYTES);
+  return createHash("sha256").update(masterKey).update(info).digest().subarray(0, KEY_BYTES);
 }
 
 /**
@@ -60,10 +56,7 @@ export function encryptChunk(plaintext: Buffer, shardKey: Buffer): EncryptedChun
  * Decrypt a chunk encrypted by `encryptChunk`.
  * Throws if the auth tag does not match (tampering detected).
  */
-export function decryptChunk(
-  encrypted: EncryptedChunk,
-  shardKey: Buffer
-): Buffer {
+export function decryptChunk(encrypted: EncryptedChunk, shardKey: Buffer): Buffer {
   const decipher = createDecipheriv(ALGORITHM, shardKey, encrypted.iv);
   decipher.setAuthTag(encrypted.authTag);
   return Buffer.concat([decipher.update(encrypted.ciphertext), decipher.final()]);

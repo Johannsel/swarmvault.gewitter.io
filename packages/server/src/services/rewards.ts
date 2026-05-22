@@ -1,10 +1,5 @@
 import { prisma } from "../database.js";
-import {
-  CREDITS_PER_GB_PER_DAY,
-  TIER_MULTIPLIER,
-  BYTES_PER_CREDIT,
-  NODE_OFFLINE_THRESHOLD_MS,
-} from "@swarmvault/shared";
+import { CREDITS_PER_GB_PER_DAY, TIER_MULTIPLIER, BYTES_PER_CREDIT, NODE_OFFLINE_THRESHOLD_MS } from "@swarmvault/shared";
 
 /**
  * Uptime reward ramp.
@@ -49,8 +44,8 @@ export const rewardService = {
         userId: true,
         tier: true,
         pledgedBytes: true,
-        uptimePct: true,    // 7-day window, fallback for new nodes
-        uptimePct3m: true,  // 3-month rolling average, null until first snapshot
+        uptimePct: true, // 7-day window, fallback for new nodes
+        uptimePct3m: true, // 3-month rolling average, null until first snapshot
       },
     });
 
@@ -67,9 +62,7 @@ export const rewardService = {
       _avg: { uptimePct: true },
       _count: { id: true },
     });
-    const avg3mByNode = new Map(
-      avgRows.map((r) => [r.nodeId, { avg: r._avg.uptimePct ?? null, count: r._count.id }])
-    );
+    const avg3mByNode = new Map(avgRows.map((r) => [r.nodeId, { avg: r._avg.uptimePct ?? null, count: r._count.id }]));
 
     const PERIOD_HOURS = 1; // run every hour
 
@@ -77,10 +70,7 @@ export const rewardService = {
       const history = avg3mByNode.get(node.id);
       // Use 3-month average if we have at least 24 hourly snapshots (~1 day of history).
       // This prevents a brand-new node from getting a misleadingly low average on day 1.
-      const effectiveUptimePct =
-        history && history.count >= 24
-          ? (history.avg ?? node.uptimePct)
-          : node.uptimePct;
+      const effectiveUptimePct = history && history.count >= 24 ? (history.avg ?? node.uptimePct) : node.uptimePct;
 
       const factor = uptimeRewardFactor(effectiveUptimePct);
       if (factor <= 0) {
@@ -96,8 +86,7 @@ export const rewardService = {
 
       const pledgedGb = Number(node.pledgedBytes) / 1024 / 1024 / 1024;
       const multiplier = TIER_MULTIPLIER[node.tier] ?? 1.0;
-      const creditsEarned =
-        pledgedGb * (PERIOD_HOURS / 24) * CREDITS_PER_GB_PER_DAY * multiplier * factor;
+      const creditsEarned = pledgedGb * (PERIOD_HOURS / 24) * CREDITS_PER_GB_PER_DAY * multiplier * factor;
 
       if (creditsEarned <= 0) continue;
 
@@ -169,5 +158,3 @@ export const rewardService = {
     });
   },
 };
-
-

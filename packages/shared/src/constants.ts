@@ -19,8 +19,8 @@ export const BYTES_PER_CREDIT = 1024 * 1024 * 1024;
 /** Tier multipliers — intentionally low because each file is stored on multiple
  *  nodes, so contributed capacity fills up faster than a dedicated store would. */
 export const TIER_MULTIPLIER: Record<string, number> = {
-  vault: 0.5,  // persistent / always-on
-  swarm: 0.2,  // consumer PC / best-effort
+  vault: 0.5, // persistent / always-on
+  swarm: 0.2, // consumer PC / best-effort
 };
 /** Maximum usable storage = base + credits (no artificial cap beyond credits) */
 
