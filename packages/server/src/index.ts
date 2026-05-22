@@ -10,7 +10,7 @@ import type { WebSocket } from "@fastify/websocket";
 import fastifyRateLimit from "@fastify/rate-limit";
 import fastifyWebSocket from "@fastify/websocket";
 import { Queue, Worker } from "bullmq";
-import IORedis from "ioredis";
+import { Redis as IORedis } from "ioredis";
 import { config } from "./config.js";
 import { prisma } from "./database.js";
 import { authRoutes } from "./routes/auth.js";
@@ -192,7 +192,7 @@ fastify.get("/health", async () => ({ status: "ok", ts: new Date().toISOString()
 fastify.get("/ws", { websocket: true }, (socket, _request) => {
   let authenticatedNodeId: string | null = null;
 
-  socket.on("message", async (raw) => {
+  socket.on("message", async (raw: Buffer | ArrayBuffer | Buffer[]) => {
     try {
       const msg = JSON.parse(raw.toString()) as {
         type: string;
