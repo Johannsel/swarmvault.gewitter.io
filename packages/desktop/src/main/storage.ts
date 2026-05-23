@@ -72,20 +72,38 @@ export const storageManager = {
   },
 
   getSettings(): Settings {
-    return store.store;
+    const s = store.store;
+    // Normalize empty/missing serverUrl so callers always get a valid URL
+    if (!s.serverUrl || !s.serverUrl.trim()) {
+      s.serverUrl = DEFAULT_SERVER_URL;
+    }
+    return s;
   },
 
   updateSettings(partial: Partial<Settings>): void {
     if (partial.serverUrl !== undefined) {
-      try {
-        new URL(partial.serverUrl);
-      } catch {
-        throw new Error(`Invalid server URL: "${partial.serverUrl}". Must include protocol, e.g. https://api.example.com`);
+      const trimmed = partial.serverUrl.trim();
+      if (trimmed === "") {
+        // Empty string → revert to default instead of erroring
+        partial = { ...partial, serverUrl: DEFAULT_SERVER_URL };
+      } else {
+        try {
+          new URL(trimmed);
+          partial = { ...partial, serverUrl: trimmed };
+        } catch {
+          throw new Error(`Invalid server URL: "${partial.serverUrl}". Must include protocol, e.g. https://api.example.com`);
+        }
       }
     }
     for (const [k, v] of Object.entries(partial)) {
       store.set(k as keyof Settings, v);
     }
+  },
+
+  clearNodeCredentials(): void {
+    store.delete("nodeId");
+    store.delete("relayToken");
+    console.log("[storage] Cleared stale node credentials");
   },
 
   getSyncDir(): string {
@@ -165,6 +183,10 @@ export const storageManager = {
       await fs.unlink(p);
       _usedBytesCache = null;
     }
+  },
+
+  async deleteRawChunk(chunkId: string): Promise<void> {
+    return this.deleteChunk(chunkId);
   },
 
   async getUsedBytes(): Promise<number> {

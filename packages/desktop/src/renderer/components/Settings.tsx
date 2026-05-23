@@ -115,12 +115,18 @@ export default function SettingsPanel() {
 
   const handleSave = async () => {
     if (!settings) return;
-    try {
-      new URL(settings.serverUrl);
+    const urlValue = settings.serverUrl.trim();
+    if (urlValue !== "") {
+      try {
+        new URL(urlValue);
+        setServerUrlError(null);
+      } catch {
+        setServerUrlError("Enter a valid URL including protocol, e.g. https://api.example.com");
+        return;
+      }
+    } else {
+      // Empty → revert to default in the UI as well
       setServerUrlError(null);
-    } catch {
-      setServerUrlError("Enter a valid URL including protocol, e.g. https://api.example.com");
-      return;
     }
     await window.swarmvault.updateSettings({
       pledgedBytes: gbToBytes(pledgedGb),
@@ -319,11 +325,12 @@ export default function SettingsPanel() {
           <input
             type="text"
             value={settings.serverUrl}
+            placeholder="https://api.swarmvault.gewitter.io (default)"
             onChange={(e) => {
               setServerUrlError(null);
               setSettings((s) => (s ? { ...s, serverUrl: e.target.value } : s));
             }}
-            className={`w-full bg-slate-700 border rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-violet-500 ${serverUrlError ? "border-red-500" : "border-slate-600"}`}
+            className={`w-full bg-slate-700 border rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-violet-500 placeholder:text-slate-600 ${serverUrlError ? "border-red-500" : "border-slate-600"}`}
           />
           {serverUrlError && (
             <div className="flex items-start gap-1.5 text-xs text-red-400">

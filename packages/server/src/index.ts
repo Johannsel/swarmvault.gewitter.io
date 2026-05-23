@@ -186,6 +186,166 @@ setInterval(
 fastify.get("/health", async () => ({ status: "ok", ts: new Date().toISOString() }));
 
 // ─────────────────────────────────────────────
+//  Redistribution helper
+// ─────────────────────────────────────────────
+
+/**
+ * When a node reduces its pledged quota below its current usedBytes, move
+ * enough chunks to other nodes so the node no longer exceeds its capacity.
+ * Operates over the existing chunk-relay WS infrastructure.
+ */
+async function redistributeOverCapacityChunks(sourceNodeId: string, app: typeof fastify): Promise<void> {
+  const sourceNode = await prisma.storageNode.findUnique({
+    where: { id: sourceNodeId },
+    select: { pledgedBytes: true, usedBytes: true, relayToken: true },
+  });
+  if (!sourceNode) return;
+
+  const overageBytes = sourceNode.usedBytes - sourceNode.pledgedBytes;
+  if (overageBytes <= BigInt(0)) return;
+
+  // Find chunks stored on this node, largest first, until we've covered the overage
+  const locations = await prisma.chunkLocation.findMany({
+    where: { nodeId: sourceNodeId },
+    include: { chunk: true },
+    orderBy: { chunk: { sizeBytes: "desc" } },
+  });
+
+  let bytesToFree = overageBytes;
+  const toRelocate: typeof locations = [];
+  for (const loc of locations) {
+    if (bytesToFree <= BigInt(0)) break;
+    toRelocate.push(loc);
+    bytesToFree -= BigInt(loc.chunk.sizeBytes);
+  }
+
+  if (toRelocate.length === 0) return;
+
+  const sourceSocket = app.nodeConnections.get(sourceNodeId);
+  const { randomBytes } = await import("node:crypto");
+
+  for (const loc of toRelocate) {
+    const { chunk } = loc;
+
+    // 1. Find a replacement node (online, has capacity, not the source)
+    const threshold = new Date(Date.now() - 5 * 60 * 1000); // online within 5 min
+    const target = await prisma.storageNode.findFirst({
+      where: {
+        id: { not: sourceNodeId },
+        status: "online",
+        lastSeenAt: { gte: threshold },
+        usedBytes: { lt: prisma.storageNode.fields.pledgedBytes },
+      },
+      orderBy: { usedBytes: "asc" },
+      select: { id: true, relayToken: true },
+    });
+    if (!target) {
+      app.log.warn(`No available target node for redistribution of chunk ${chunk.id}`);
+      break;
+    }
+
+    const targetSocket = app.nodeConnections.get(target.id);
+    if (!targetSocket || targetSocket.readyState !== 1) {
+      app.log.warn(`Target node ${target.id} WS not open, skipping chunk ${chunk.id}`);
+      continue;
+    }
+
+    if (!sourceSocket || sourceSocket.readyState !== 1) {
+      app.log.warn(`Source node ${sourceNodeId} WS disconnected during redistribution`);
+      break;
+    }
+
+    // 2. Request chunk data from source node
+    const requestNonce = randomBytes(8).toString("hex");
+    const requestKey = `${chunk.fileId}:${chunk.shardIndex}:${requestNonce}`;
+    const TIMEOUT_MS = 60_000;
+
+    const chunkData = await new Promise<Buffer | null>((resolve) => {
+      const timer = setTimeout(() => {
+        app.pendingChunkResponses.delete(requestKey);
+        resolve(null);
+      }, TIMEOUT_MS);
+      app.pendingChunkResponses.set(requestKey, (data) => {
+        clearTimeout(timer);
+        app.pendingChunkResponses.delete(requestKey);
+        resolve(data);
+      });
+      sourceSocket.send(JSON.stringify({
+        type: "chunk_request",
+        payload: { fileId: chunk.fileId, shardIndex: chunk.shardIndex, requestNonce },
+      }));
+    });
+
+    if (!chunkData) {
+      app.log.warn(`Source node ${sourceNodeId} did not respond with chunk ${chunk.id} within timeout`);
+      continue;
+    }
+
+    // 3. Relay chunk data to target node and wait for ack
+    const ackNonce = randomBytes(8).toString("hex");
+    const ackKey = `${chunk.fileId}:${chunk.shardIndex}:${ackNonce}`;
+
+    const acked = await new Promise<boolean>((resolve) => {
+      const timer = setTimeout(() => {
+        app.pendingAcks.delete(ackKey);
+        resolve(false);
+      }, TIMEOUT_MS);
+      app.pendingAcks.set(ackKey, (ok) => {
+        clearTimeout(timer);
+        app.pendingAcks.delete(ackKey);
+        resolve(ok);
+      });
+      targetSocket.send(JSON.stringify({
+        type: "chunk_relay",
+        payload: {
+          fileId: chunk.fileId,
+          shardIndex: chunk.shardIndex,
+          chunkHash: chunk.chunkHash,
+          isData: chunk.isData,
+          ackNonce,
+          data: chunkData.toString("base64"),
+        },
+      }));
+    });
+
+    if (!acked) {
+      app.log.warn(`Target node ${target.id} did not ack chunk ${chunk.id} during redistribution`);
+      continue;
+    }
+
+    // 4. Update DB: add new location, remove old, update node usedBytes
+    await prisma.$transaction([
+      prisma.chunkLocation.upsert({
+        where: { chunkId_nodeId: { chunkId: chunk.id, nodeId: target.id } },
+        create: { chunkId: chunk.id, nodeId: target.id, verified: true },
+        update: { verified: true, storedAt: new Date() },
+      }),
+      prisma.chunkLocation.delete({
+        where: { chunkId_nodeId: { chunkId: chunk.id, nodeId: sourceNodeId } },
+      }),
+      prisma.storageNode.update({
+        where: { id: sourceNodeId },
+        data: { usedBytes: { decrement: BigInt(chunk.sizeBytes) } },
+      }),
+      prisma.storageNode.update({
+        where: { id: target.id },
+        data: { usedBytes: { increment: BigInt(chunk.sizeBytes) } },
+      }),
+    ]);
+
+    // 5. Tell source node to delete its copy
+    if (sourceSocket.readyState === 1) {
+      sourceSocket.send(JSON.stringify({
+        type: "chunk_delete",
+        payload: { fileId: chunk.fileId, shardIndex: chunk.shardIndex },
+      }));
+    }
+
+    app.log.info(`Redistributed chunk ${chunk.id} from node ${sourceNodeId} → ${target.id}`);
+  }
+}
+
+// ─────────────────────────────────────────────
 //  WebSocket — desktop client persistent connection
 // ─────────────────────────────────────────────
 
@@ -205,6 +365,8 @@ fastify.get("/ws", { websocket: true }, (socket, _request) => {
         const node = await prisma.storageNode.findFirst({ where: { id: nodeId, relayToken } });
         if (!node) {
           socket.send(JSON.stringify({ type: "error", payload: { message: "Invalid credentials" } }));
+          // Close with 4001 so the client can detect stale node credentials and re-register
+          socket.close(4001, "Invalid credentials");
           return;
         }
         authenticatedNodeId = nodeId;
@@ -275,6 +437,8 @@ fastify.get("/ws", { websocket: true }, (socket, _request) => {
           return;
         }
 
+        const previousPledgedBytes = node.pledgedBytes;
+
         await prisma.storageNode.update({
           where: { id: node.id },
           data: {
@@ -284,6 +448,15 @@ fastify.get("/ws", { websocket: true }, (socket, _request) => {
             lastSeenAt: new Date(),
           },
         });
+
+        // If quota was reduced and the node is now over capacity, kick off background
+        // redistribution so chunks are moved to other nodes rather than deleted.
+        if (pledgedBytes < previousPledgedBytes && usedBytes > pledgedBytes) {
+          fastify.log.info(`Node ${nodeId} reduced quota (${previousPledgedBytes} → ${pledgedBytes}, used ${usedBytes}) — queuing redistribution`);
+          redistributeOverCapacityChunks(nodeId, fastify).catch((e: unknown) => {
+            fastify.log.error(e, `Redistribution failed for node ${nodeId}`);
+          });
+        }
 
         await nodeService.checkPendingRetrievalJobs(node.id);
         socket.send(JSON.stringify({ type: "heartbeat_ack", payload: { ts: Date.now() } }));

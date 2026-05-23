@@ -83,9 +83,9 @@ export default function Dashboard() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Dashboard</h1>
-        <div className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full ${connected ? "bg-emerald-900/40 text-emerald-400" : "bg-red-900/40 text-red-400"}`}>
+        <div className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full ${connected ? "bg-emerald-900/40 text-emerald-400" : stats?.nodeId ? "bg-red-900/40 text-red-400" : "bg-slate-700/60 text-slate-400"}`}>
           {connected ? <Wifi size={12} /> : <WifiOff size={12} />}
-          {connected ? "Connected to SwarmVault" : "Offline — reconnecting…"}
+          {connected ? "Connected to SwarmVault" : stats?.nodeId ? "Offline — reconnecting…" : "Node not registered"}
         </div>
       </div>
 

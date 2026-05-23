@@ -528,26 +528,44 @@ export const syncClient = {
       ws = new WebSocketLib(wsUrl);
 
       ws.onopen = () => {
-        console.log("[ws] Connected to server");
-        statusChangeCallback?.(true);
+        console.log("[ws] Connected to server — authenticating");
+        // Don't report connected yet; wait for auth_ack so the status only
+        // shows "Connected" after the server has confirmed the credentials.
         ws!.send(JSON.stringify({ type: "auth", payload: { nodeId, relayToken } }));
-        this.sendHeartbeat(nodeId, relayToken);
-        heartbeatTimer = setInterval(() => this.sendHeartbeat(nodeId, relayToken), HEARTBEAT_INTERVAL_MS);
       };
 
       ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data as string) as { type: string; payload: unknown };
+
+          // auth_ack: credentials accepted — mark connected and start heartbeat
+          if (msg.type === "auth_ack") {
+            console.log("[ws] Authenticated");
+            statusChangeCallback?.(true);
+            void this.sendHeartbeat(nodeId, relayToken);
+            heartbeatTimer = setInterval(() => void this.sendHeartbeat(nodeId, relayToken), HEARTBEAT_INTERVAL_MS);
+            return;
+          }
+
           this.handleWsMessage(msg);
         } catch {
           /* ignore malformed messages */
         }
       };
 
-      ws.onclose = () => {
-        console.log("[ws] Disconnected — reconnecting in 10s");
-        statusChangeCallback?.(false);
+      ws.onclose = (event) => {
         if (heartbeatTimer) clearInterval(heartbeatTimer);
+        statusChangeCallback?.(false);
+
+        // Code 4001: server explicitly rejected credentials.
+        // Clear the stale node registration so the user can re-register.
+        if ((event as { code?: number }).code === 4001) {
+          console.warn("[ws] Server rejected node credentials — clearing stale node registration");
+          storageManager.clearNodeCredentials();
+          return; // stop reconnecting
+        }
+
+        console.log("[ws] Disconnected — reconnecting in 10s");
         setTimeout(connect, 10_000);
       };
 
@@ -633,6 +651,16 @@ export const syncClient = {
       if (status === "done") {
         console.log("[sync] Retrieval job done");
       }
+      return;
+    }
+
+    if (msg.type === "chunk_delete") {
+      const { fileId, shardIndex } = msg.payload as { fileId: string; shardIndex: number };
+      const chunkId = `${fileId}-${shardIndex}`;
+      storageManager
+        .deleteRawChunk(chunkId)
+        .then(() => console.log(`[ws] Deleted redistributed chunk ${chunkId}`))
+        .catch((err) => console.error(`[ws] Failed to delete chunk ${chunkId}:`, err));
     }
   },
 

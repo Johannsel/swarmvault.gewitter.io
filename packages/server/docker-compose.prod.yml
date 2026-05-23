@@ -32,14 +32,17 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=traefik"
-      # Router
-      - "traefik.http.routers.swarmvault-api.rule=Host(`api.swarmvault.gewitter.io`)"
+      # ── HTTP API router (with body-size limit middleware) ──────────────────
+      - "traefik.http.routers.swarmvault-api.rule=Host(`api.swarmvault.gewitter.io`) && !PathPrefix(`/ws`)"
       - "traefik.http.routers.swarmvault-api.entrypoints=websecure"
       - "traefik.http.routers.swarmvault-api.tls.certresolver=leresolver"
-      # Allow large shard uploads (20 MB per chunk)
       - "traefik.http.routers.swarmvault-api.middlewares=swarmvault-bodylimit"
       - "traefik.http.middlewares.swarmvault-bodylimit.buffering.maxRequestBodyBytes=20971520"
-      # Backend
+      # ── WebSocket router (NO buffering middleware — it breaks WS upgrade) ──
+      - "traefik.http.routers.swarmvault-ws.rule=Host(`api.swarmvault.gewitter.io`) && PathPrefix(`/ws`)"
+      - "traefik.http.routers.swarmvault-ws.entrypoints=websecure"
+      - "traefik.http.routers.swarmvault-ws.tls.certresolver=leresolver"
+      # ── Shared backend ─────────────────────────────────────────────────────
       - "traefik.http.services.swarmvault-api.loadbalancer.server.port=3000"
 
   postgres:
