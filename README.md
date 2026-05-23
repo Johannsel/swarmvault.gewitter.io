@@ -292,13 +292,13 @@ Headers required:
 
 ### Nodes — `/api/v1/nodes`
 
-| Method | Path            | Auth | Description                             |
-| ------ | --------------- | ---- | --------------------------------------- |
-| `POST` | `/`             | ✓    | Register a storage node                 |
-| `GET`  | `/`             | ✓    | List all nodes (including uptime stats) |
-| `POST` | `/heartbeat`    | ✓    | Update node status + used bytes         |
-| `GET`  | `/swarm-stats`  | —    | Aggregate swarm stats (public)          |
-| `GET`  | `/online-count` | —    | Count of currently online nodes (public)|
+| Method | Path            | Auth | Description                              |
+| ------ | --------------- | ---- | ---------------------------------------- |
+| `POST` | `/`             | ✓    | Register a storage node                  |
+| `GET`  | `/`             | ✓    | List all nodes (including uptime stats)  |
+| `POST` | `/heartbeat`    | ✓    | Update node status + used bytes          |
+| `GET`  | `/swarm-stats`  | —    | Aggregate swarm stats (public)           |
+| `GET`  | `/online-count` | —    | Count of currently online nodes (public) |
 
 **Heartbeat body:**
 
@@ -759,7 +759,7 @@ pnpm typecheck
 | Min nodes for upload  | **3** online nodes required (2 data + 1 parity — beta; production will use 6)                                                                                                                                   |
 | JWT expiry            | 7 days, no refresh token — users must re-login after expiry                                                                                                                                                     |
 | Shard size            | `ceil(fileSize / dataShards)` — with 2 data shards a 100 MB file produces two 50 MB shards + one 50 MB parity shard                                                                                             |
-| Max body (production) | **120 MB** — set via Traefik buffering middleware (`maxRequestBodyBytes = 125,829,120`)                                                                                                                          |
+| Max body (production) | **120 MB** — set via Traefik buffering middleware (`maxRequestBodyBytes = 125,829,120`)                                                                                                                         |
 | File sharing          | Shadow copies stored decrypted on server for up to 7 days                                                                                                                                                       |
 | App signing           | Not configured — macOS/Windows will show security warnings on first launch (acceptable for beta)                                                                                                                |
 | App icons             | `assets/icon.ico` (Windows) is present. macOS builds need `assets/icon.icns`; Linux builds need `assets/icon.png` (256×256 min); the tray needs `assets/tray-icon.png` (16×16) — falls back to empty if missing |
