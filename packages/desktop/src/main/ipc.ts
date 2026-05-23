@@ -2,8 +2,9 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import os from "node:os";
 import { ipcMain as IpcMain, BrowserWindow } from "electron";
-import { storageManager } from "./storage.js";
+import { storageManager, setVaultKey, clearVaultKey, isVaultUnlocked } from "./storage.js";
 import { syncClient } from "./sync.js";
+import { deriveVaultKey, deriveAuthKey } from "@swarmvault/shared";
 
 type IpcMainType = typeof IpcMain;
 
@@ -42,12 +43,14 @@ export const ipcHandlers = {
 
     ipcMain.handle("auth:login", async (_event, { email, password }: { email: string; password: string }) => {
       const settings = storageManager.getSettings();
+      // Derive a server-side auth key from the password — the raw password is never sent.
+      const authKey = await deriveAuthKey(password, email);
       const res = await fetchWithTimeout(
         `${settings.serverUrl}/api/v1/auth/login`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password }),
+          body: JSON.stringify({ email, password: authKey }),
         },
         15_000,
       );
@@ -62,7 +65,9 @@ export const ipcHandlers = {
         throw new Error(msg);
       }
       const data = (await res.json()) as { token: string; user: { id: string; email: string; username: string } };
-      storageManager.updateSettings({ authToken: data.token });
+      storageManager.updateSettings({ authToken: data.token, userId: data.user.id });
+      // Derive vault key from password + userId and hold it in memory
+      setVaultKey(await deriveVaultKey(password, data.user.id));
       // Re-init sync if this node is already registered
       const updated = storageManager.getSettings();
       if (updated.nodeId) await syncClient.init();
@@ -72,12 +77,14 @@ export const ipcHandlers = {
 
     ipcMain.handle("auth:register", async (_event, { email, username, password }: { email: string; username: string; password: string }) => {
       const settings = storageManager.getSettings();
+      // Derive a server-side auth key from the password — the raw password is never sent.
+      const authKey = await deriveAuthKey(password, email);
       const res = await fetchWithTimeout(
         `${settings.serverUrl}/api/v1/auth/register`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, username, password }),
+          body: JSON.stringify({ email, username, password: authKey }),
         },
         15_000,
       );
@@ -98,15 +105,32 @@ export const ipcHandlers = {
         throw new Error(msg);
       }
       const data = (await res.json()) as { token: string; user: { id: string; email: string; username: string } };
-      storageManager.updateSettings({ authToken: data.token });
+      storageManager.updateSettings({ authToken: data.token, userId: data.user.id });
+      // Derive vault key from password + userId and hold it in memory
+      setVaultKey(await deriveVaultKey(password, data.user.id));
       mainWindow?.webContents.send("auth:changed", { loggedIn: true, user: data.user });
       return data.user;
     });
 
     ipcMain.handle("auth:logout", () => {
-      storageManager.updateSettings({ authToken: null });
+      storageManager.updateSettings({ authToken: null, userId: null });
+      clearVaultKey();
       syncClient.stop();
       mainWindow?.webContents.send("auth:changed", { loggedIn: false, user: null });
+      return { ok: true };
+    });
+
+    // ── Vault unlock (password re-entry after app restart) ────────────────────
+    // The vault key is not persisted — the user must re-enter their password once
+    // per session to re-derive it.  The userId is stored so we don't need to call
+    // the server; only the password is needed.
+    ipcMain.handle("auth:unlock", async (_event, { password }: { password: string }) => {
+      const settings = storageManager.getSettings();
+      if (!settings.userId) throw new Error("No saved session — please log in");
+      setVaultKey(await deriveVaultKey(password, settings.userId));
+      // Now that the vault is open, start sync
+      await syncClient.init();
+      mainWindow?.webContents.send("auth:changed", { loggedIn: true, user: null });
       return { ok: true };
     });
 
@@ -441,6 +465,12 @@ export const ipcHandlers = {
     ipcMain.on("renderer:ready", () => {
       // Send the actual current connection state (not hardcoded true)
       mainWindow?.webContents.send("sync:status", { connected: syncClient.isConnected() });
+      // If the user has a saved session but the vault key was lost (app restart),
+      // ask the renderer to prompt for the password.
+      const settings = storageManager.getSettings();
+      if (settings.authToken && settings.userId && !isVaultUnlocked()) {
+        mainWindow?.webContents.send("auth:needsUnlock");
+      }
     });
   },
 };

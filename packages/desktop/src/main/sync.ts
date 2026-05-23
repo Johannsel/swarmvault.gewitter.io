@@ -22,7 +22,7 @@
 import path from "node:path";
 import fs from "node:fs/promises";
 import chokidar, { FSWatcher } from "chokidar";
-import { storageManager } from "./storage.js";
+import { storageManager, getVaultKey } from "./storage.js";
 import {
   encodeFile,
   generateMasterKey,
@@ -33,8 +33,8 @@ import {
   deserializeEncryptedChunk,
   decodeFile,
   sha256,
-  encodeMasterKey,
-  decodeMasterKey,
+  encryptMasterKey,
+  decryptMasterKey,
   DEFAULT_DATA_SHARDS,
   DEFAULT_PARITY_SHARDS,
   HEARTBEAT_INTERVAL_MS,
@@ -68,7 +68,6 @@ type ManifestEntry = {
   contentHash: string;
   sizeBytes: number;
   mimeType: string;
-  tier: string;
   status: string;
   updatedAt: string;
 };
@@ -290,11 +289,10 @@ export const syncClient = {
       path: virtualPath,
       mimeType,
       sizeBytes: data.length,
-      tier: settings.tier,
       contentHash,
       totalShards: DEFAULT_DATA_SHARDS,
       parityShards: DEFAULT_PARITY_SHARDS,
-      encryptedMasterKey: encodeMasterKey(masterKey),
+      encryptedMasterKey: encryptMasterKey(masterKey, getVaultKey()),
     };
 
     const url = existingFileId ? `${settings.serverUrl}/api/v1/files/${existingFileId}` : `${settings.serverUrl}/api/v1/files`;
@@ -370,7 +368,6 @@ export const syncClient = {
       contentHash,
       sizeBytes: data.length,
       mimeType,
-      tier: settings.tier,
       status: "pending",
       updatedAt: new Date().toISOString(),
     });
@@ -533,7 +530,7 @@ export const syncClient = {
       shards: { index: number; data: string; chunkHash: string }[];
     };
 
-    const masterKey = decodeMasterKey(body.encryptedMasterKey);
+    const masterKey = decryptMasterKey(body.encryptedMasterKey, getVaultKey());
     const totalShards = body.totalShards + body.parityShards;
 
     const shardSlots: (Buffer | null)[] = new Array(totalShards).fill(null);
@@ -672,7 +669,7 @@ export const syncClient = {
   async sendHeartbeat(nodeId: string, relayToken: string): Promise<void> {
     if (!ws || ws.readyState !== WebSocketLib.OPEN) return;
     const settings = storageManager.getSettings();
-    const [usedBytes, availableDiskBytes] = await Promise.all([storageManager.getUsedBytes(), storageManager.getAvailableDiskBytes()]);
+    const usedBytes = await storageManager.getUsedBytes();
     ws.send(
       JSON.stringify({
         type: "heartbeat",
@@ -682,7 +679,6 @@ export const syncClient = {
           status: storageManager.isPaused() ? "maintenance" : "online",
           usedBytes,
           pledgedBytes: settings.pledgedBytes,
-          availableDiskBytes,
         },
       }),
     );
@@ -705,14 +701,6 @@ export const syncClient = {
         .catch((err) => {
           console.error("[ws] Failed to read chunk:", err);
         });
-      return;
-    }
-
-    if (msg.type === "retrieval_job_update") {
-      const { status } = msg.payload as { status: string; shutdownAfterDownload: boolean };
-      if (status === "done") {
-        console.log("[sync] Retrieval job done");
-      }
       return;
     }
 

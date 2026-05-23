@@ -20,6 +20,10 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const [statusLabel, setStatusLabel] = useState("Loading…");
   const [statusOk, setStatusOk] = useState(false);
+  const [needsUnlock, setNeedsUnlock] = useState(false);
+  const [unlockPassword, setUnlockPassword] = useState("");
+  const [unlockError, setUnlockError] = useState<string | null>(null);
+  const [unlocking, setUnlocking] = useState(false);
 
   const refreshStatus = async () => {
     try {
@@ -43,9 +47,68 @@ export default function App() {
   useEffect(() => {
     window.swarmvault.rendererReady();
     refreshStatus();
-    const unsub = window.swarmvault.onAuthChanged(() => refreshStatus());
-    return unsub;
+    const unsubAuth = window.swarmvault.onAuthChanged(() => refreshStatus());
+    const unsubUnlock = window.swarmvault.onNeedsUnlock(() => setNeedsUnlock(true));
+    return () => {
+      unsubAuth();
+      unsubUnlock();
+    };
   }, []);
+
+  const handleUnlock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setUnlocking(true);
+    setUnlockError(null);
+    try {
+      await window.swarmvault.unlock(unlockPassword);
+      setNeedsUnlock(false);
+      setUnlockPassword("");
+      refreshStatus();
+    } catch (err) {
+      setUnlockError(err instanceof Error ? err.message : "Incorrect password");
+    } finally {
+      setUnlocking(false);
+    }
+  };
+
+  if (needsUnlock) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-slate-900 text-slate-100">
+        <div className="w-80 bg-slate-800 rounded-xl border border-slate-700 p-8 space-y-5">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center text-sm font-bold">SV</div>
+            <div>
+              <div className="font-semibold">SwarmVault</div>
+              <div className="text-xs text-slate-400">Vault locked</div>
+            </div>
+          </div>
+          <p className="text-sm text-slate-400">Enter your password to unlock the vault and resume sync.</p>
+          <form onSubmit={handleUnlock} className="space-y-3">
+            <input
+              type="password"
+              placeholder="Password"
+              autoFocus
+              value={unlockPassword}
+              onChange={(e) => setUnlockPassword(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg bg-slate-700 border border-slate-600 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+            />
+            {unlockError && <p className="text-xs text-red-400">{unlockError}</p>}
+            <button type="submit" disabled={unlocking || !unlockPassword} className="w-full py-2 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-sm font-medium transition-colors">
+              {unlocking ? "Unlocking…" : "Unlock"}
+            </button>
+          </form>
+          <button
+            onClick={() => {
+              window.swarmvault.logout();
+              setNeedsUnlock(false);
+            }}
+            className="w-full text-xs text-slate-500 hover:text-slate-300 transition-colors">
+            Sign out instead
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-slate-900 text-slate-100">

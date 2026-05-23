@@ -14,6 +14,8 @@ const api = {
   login: (email: string, password: string) => ipcRenderer.invoke("auth:login", { email, password }),
   register: (email: string, username: string, password: string) => ipcRenderer.invoke("auth:register", { email, username, password }),
   logout: () => ipcRenderer.invoke("auth:logout"),
+  /** Re-derive the vault key after an app restart without going to the server. */
+  unlock: (password: string) => ipcRenderer.invoke("auth:unlock", { password }) as Promise<{ ok: boolean }>,
 
   // Node management
   registerNode: (opts: { displayName: string; tier: "vault" | "swarm"; pledgedBytes: number }) => ipcRenderer.invoke("node:register", opts),
@@ -87,6 +89,12 @@ const api = {
     const listener = (_event: Electron.IpcRendererEvent, state: { loggedIn: boolean; user: { email: string; username: string } | null }) => cb(state);
     ipcRenderer.on("auth:changed", listener);
     return () => ipcRenderer.removeListener("auth:changed", listener);
+  },
+
+  /** Fires once on startup when there is a saved session but the vault key needs re-entry. */
+  onNeedsUnlock: (cb: () => void) => {
+    ipcRenderer.once("auth:needsUnlock", cb);
+    return () => ipcRenderer.removeListener("auth:needsUnlock", cb);
   },
 
   // Signal renderer is ready

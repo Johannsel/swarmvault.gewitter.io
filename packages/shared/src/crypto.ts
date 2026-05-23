@@ -8,7 +8,10 @@
  * Only encrypted ciphertext leaves the client.
  */
 
-import { createCipheriv, createDecipheriv, randomBytes, createHash } from "node:crypto";
+import { createCipheriv, createDecipheriv, randomBytes, createHash, pbkdf2 } from "node:crypto";
+import { promisify } from "node:util";
+
+const pbkdf2Async = promisify(pbkdf2);
 
 const ALGORITHM = "aes-256-gcm";
 const KEY_BYTES = 32; // 256 bits
@@ -87,16 +90,69 @@ export function sha256(data: Buffer): string {
   return createHash("sha256").update(data).digest("hex");
 }
 
+// ─── Vault key: password-derived key used to wrap each file's master key ────
+
 /**
- * Encode a master key as a base64url string for safe storage / display.
+ * Derive a 256-bit vault key from the user's password + their server-assigned
+ * userId.  PBKDF2-SHA256 with 200 000 iterations.
+ *
+ * Deterministic: same password + userId → same vault key on any device.
+ * The vault key NEVER leaves the client — only the AES-GCM-wrapped master key
+ * is sent to / stored by the server.
  */
-export function encodeMasterKey(key: Buffer): string {
-  return key.toString("base64url");
+export async function deriveVaultKey(password: string, userId: string): Promise<Buffer> {
+  // Salt = "swarmvault-vault-v1:" + userId prevents cross-user key reuse
+  const salt = Buffer.from(`swarmvault-vault-v1:${userId}`, "utf8");
+  return pbkdf2Async(password, salt, 200_000, KEY_BYTES, "sha256");
 }
 
 /**
- * Decode a base64url master key string back to a Buffer.
+ * Derive the authentication key that is sent to the server in place of the raw password.
+ *
+ * This ensures the server NEVER sees the master password and therefore cannot
+ * derive the vault key.  The two keys are independent:
+ *   authKey  = PBKDF2(password, "swarmvault-auth-v1:"  + email.toLowerCase(), 100 000, 32, sha256)
+ *   vaultKey = PBKDF2(password, "swarmvault-vault-v1:" + userId,              200 000, 32, sha256)
+ *
+ * The server stores argon2(authKey) — even a compromised server cannot work
+ * backwards from authKey to vaultKey because the salts and iteration counts differ.
+ *
+ * Returns a 64-character lowercase hex string suitable for JSON transport.
  */
-export function decodeMasterKey(encoded: string): Buffer {
-  return Buffer.from(encoded, "base64url");
+export async function deriveAuthKey(password: string, email: string): Promise<string> {
+  const salt = Buffer.from(`swarmvault-auth-v1:${email.toLowerCase()}`, "utf8");
+  const key = await pbkdf2Async(password, salt, 100_000, KEY_BYTES, "sha256");
+  return key.toString("hex");
+}
+
+/**
+ * Wrap (encrypt) a file master key with the vault key.
+ *
+ * Wire format (all base64url-encoded as one string):
+ *   [IV 12 bytes][GCM auth-tag 16 bytes][ciphertext 32 bytes]  →  60 raw bytes → 80 base64url chars
+ *
+ * This is what is stored in SwarmFile.encryptedMasterKey on the server.
+ * The server never sees the plaintext master key.
+ */
+export function encryptMasterKey(masterKey: Buffer, vaultKey: Buffer): string {
+  const iv = randomBytes(IV_BYTES);
+  const cipher = createCipheriv(ALGORITHM, vaultKey, iv);
+  const ciphertext = Buffer.concat([cipher.update(masterKey), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+  return Buffer.concat([iv, authTag, ciphertext]).toString("base64url");
+}
+
+/**
+ * Unwrap (decrypt) a master key that was encrypted with `encryptMasterKey`.
+ */
+export function decryptMasterKey(encoded: string, vaultKey: Buffer): Buffer {
+  const buf = Buffer.from(encoded, "base64url");
+
+  // [IV 12][authTag 16][ciphertext 32]
+  const iv = buf.subarray(0, IV_BYTES);
+  const authTag = buf.subarray(IV_BYTES, IV_BYTES + TAG_BYTES);
+  const ciphertext = buf.subarray(IV_BYTES + TAG_BYTES);
+  const decipher = createDecipheriv(ALGORITHM, vaultKey, iv);
+  decipher.setAuthTag(authTag);
+  return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
 }

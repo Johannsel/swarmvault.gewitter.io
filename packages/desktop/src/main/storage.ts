@@ -13,7 +13,7 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import { existsSync, mkdirSync } from "node:fs";
 import Store from "electron-store";
-import { encryptChunk, decryptChunk, deriveShardKey, decodeMasterKey, serializeEncryptedChunk, deserializeEncryptedChunk, sha256 } from "@swarmvault/shared";
+import { sha256 } from "@swarmvault/shared";
 
 interface Settings {
   pledgedBytes: number; // bytes contributed to swarm
@@ -25,6 +25,8 @@ interface Settings {
   nodeId: string | null;
   relayToken: string | null;
   authToken: string | null;
+  /** Server-assigned user ID — stored so we can re-derive the vault key on restart. */
+  userId: string | null;
   contributionPaused: boolean;
   /**
    * Vault folder paths that should be mirrored locally.
@@ -42,6 +44,31 @@ const DEFAULT_SERVER_URL = process.env.NODE_ENV === "development" ? "http://loca
 let _usedBytesCache: { value: number; at: number } | null = null;
 const USED_BYTES_TTL_MS = 30_000;
 
+/**
+ * In-memory vault key — derived from the user's password on login and cleared
+ * on logout.  Never persisted to disk or sent to the server.
+ */
+let _vaultKey: Buffer | null = null;
+
+export function setVaultKey(key: Buffer): void {
+  _vaultKey = key;
+}
+
+export function clearVaultKey(): void {
+  // Zero out the buffer before releasing it to reduce key lifetime in memory
+  if (_vaultKey) _vaultKey.fill(0);
+  _vaultKey = null;
+}
+
+export function getVaultKey(): Buffer {
+  if (!_vaultKey) throw new Error("Vault is locked — please log in first");
+  return _vaultKey;
+}
+
+export function isVaultUnlocked(): boolean {
+  return _vaultKey !== null;
+}
+
 const store = new Store<Settings>({
   name: "swarmvault-settings",
   defaults: {
@@ -53,6 +80,7 @@ const store = new Store<Settings>({
     nodeId: null,
     relayToken: null,
     authToken: null,
+    userId: null,
     contributionPaused: false,
     syncedFolders: [], // empty = sync all
   },
@@ -132,23 +160,6 @@ export const storageManager = {
     return path.join(store.get("chunkDir"), prefix, `${chunkId}.svchunk`);
   },
 
-  async writeChunk(chunkId: string, plaintext: Buffer, masterKey: string, shardIndex: number): Promise<string> {
-    if (!(await this.hasCapacity(plaintext.length))) {
-      throw new Error(`[storage] Refusing chunk ${chunkId}: capacity limit reached`);
-    }
-    const key = deriveShardKey(decodeMasterKey(masterKey), shardIndex);
-    const encrypted = encryptChunk(plaintext, key);
-    const serialized = serializeEncryptedChunk(encrypted);
-    const chunkHash = sha256(serialized);
-
-    const p = this.chunkPath(chunkId);
-    await fs.mkdir(path.dirname(p), { recursive: true });
-    await fs.writeFile(p, serialized);
-    _usedBytesCache = null; // invalidate after write
-
-    return chunkHash;
-  },
-
   /**
    * Write an already-encrypted chunk as-is.
    * Used by the WebSocket relay receiver — the uploader already encrypted the
@@ -167,14 +178,6 @@ export const storageManager = {
   /** Read raw encrypted bytes without decrypting (for retrieval relay back to server). */
   async readRawChunk(chunkId: string): Promise<Buffer> {
     return fs.readFile(this.chunkPath(chunkId));
-  },
-
-  async readChunk(chunkId: string, masterKey: string, shardIndex: number): Promise<Buffer> {
-    const p = this.chunkPath(chunkId);
-    const serialized = await fs.readFile(p);
-    const encrypted = deserializeEncryptedChunk(serialized);
-    const key = deriveShardKey(decodeMasterKey(masterKey), shardIndex);
-    return decryptChunk(encrypted, key);
   },
 
   async deleteChunk(chunkId: string): Promise<void> {

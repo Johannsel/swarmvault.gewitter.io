@@ -10,12 +10,20 @@ const registerBody = z.object({
     .min(3)
     .max(32)
     .regex(/^[a-zA-Z0-9_-]+$/),
-  password: z.string().min(10).max(128),
+  // The client sends PBKDF2-derived authKey (hex-encoded 32 bytes), never the raw password.
+  password: z
+    .string()
+    .length(64)
+    .regex(/^[0-9a-f]+$/),
 });
 
 const loginBody = z.object({
   email: z.string().email(),
-  password: z.string(),
+  // Same authKey format as register.
+  password: z
+    .string()
+    .length(64)
+    .regex(/^[0-9a-f]+$/),
 });
 
 export async function authRoutes(fastify: FastifyInstance): Promise<void> {

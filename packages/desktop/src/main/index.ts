@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, shell } from "electron";
 import path from "node:path";
 import { ipcHandlers } from "./ipc.js";
-import { storageManager } from "./storage.js";
+import { storageManager, isVaultUnlocked } from "./storage.js";
 import { syncClient } from "./sync.js";
 
 // Prevent Chromium's network-service sandbox from crashing on macOS
@@ -119,7 +119,14 @@ app.whenReady().then(async () => {
 
   // Start background services
   await storageManager.init();
-  await syncClient.init();
+  // Only auto-start sync when the vault key is available (i.e. the user logged in
+  // during this session).  If the app was restarted with a saved authToken but the
+  // vault key has not yet been re-derived from the password, we wait — the
+  // renderer will show an unlock prompt and call auth:unlock which runs syncClient.init().
+  const startupSettings = storageManager.getSettings();
+  if (!startupSettings.authToken || isVaultUnlocked()) {
+    await syncClient.init();
+  }
 });
 
 app.on("activate", () => {
