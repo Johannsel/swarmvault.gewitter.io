@@ -44,15 +44,25 @@ function gfDiv(a: number, b: number): number {
 type Matrix = number[][];
 
 function makeVandermonde(rows: number, cols: number): Matrix {
-  const m: Matrix = [];
-  for (let r = 0; r < rows; r++) {
-    const row: number[] = [];
-    for (let c = 0; c < cols; c++) {
-      row.push(r === 0 ? 1 : gfMul(GF_EXP[r - 1]!, c === 0 ? 1 : GF_EXP[((r - 1) * c) % 255]!));
-    }
-    m.push(row);
-  }
-  return m;
+  // V[r][c] = α^(r·c) in GF(2^8) — each row is a distinct geometric progression.
+  return Array.from({ length: rows }, (_, r) => Array.from({ length: cols }, (_, c) => GF_EXP[(r * c) % 255]!));
+}
+
+/**
+ * Build a systematic encoding matrix for an (dataShards, parityShards) RS code.
+ *
+ * Multiplying the Vandermonde by the inverse of its top square block yields a
+ * matrix whose top `dataShards` rows are the identity — so data shards are
+ * verbatim copies of the original chunks and no transformation is needed at
+ * encode time.  The bottom `parityShards` rows are the parity coefficients.
+ *
+ * Both `encodeFile` and `decodeFile` must use this same matrix so the system
+ * of equations is consistent.
+ */
+function buildEncodingMatrix(dataShards: number, parityShards: number): Matrix {
+  const vm = makeVandermonde(dataShards + parityShards, dataShards);
+  const topInv = invertMatrix(vm.slice(0, dataShards));
+  return matrixMultiply(vm, topInv);
 }
 
 function identityMatrix(n: number): Matrix {
@@ -127,12 +137,11 @@ export function encodeFile(data: Buffer, dataShards: number, parityShards: numbe
     shards.push(padded.subarray(i * shardSize, (i + 1) * shardSize));
   }
 
-  // Build encoding matrix: top is identity (preserves data shards),
-  // bottom is Vandermonde-derived parity rows
-  const vm = makeVandermonde(totalShards, dataShards);
-  const encMatrix = vm; // first dataShards rows are identity-ish
+  // Systematic encoding matrix: top rows are identity (data shards pass through
+  // unchanged); parity rows define the Reed-Solomon coefficients.
+  const encMatrix = buildEncodingMatrix(dataShards, parityShards);
 
-  // Compute parity shards
+  // Compute parity shards using the bottom parityShards rows
   for (let p = 0; p < parityShards; p++) {
     const pShard = Buffer.alloc(shardSize);
     const row = encMatrix[dataShards + p]!;
@@ -175,10 +184,11 @@ export function decodeFile(shards: (Buffer | null)[], dataShards: number, parity
     return complete.subarray(0, originalSize);
   }
 
-  // Take exactly dataShards present shards
+  // Take exactly dataShards present shards for reconstruction.
+  // Use the same systematic encoding matrix so the solve is consistent with encode.
   const usedIndices = presentIndices.slice(0, dataShards);
-  const vm = makeVandermonde(totalShards, dataShards);
-  const subM = subMatrix(vm, usedIndices);
+  const encMatrix = buildEncodingMatrix(dataShards, parityShards);
+  const subM = subMatrix(encMatrix, usedIndices);
   const decodeMatrix = invertMatrix(subM);
 
   const shardSize = (shards.find((s) => s !== null) as Buffer).length;

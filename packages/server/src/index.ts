@@ -290,19 +290,22 @@ async function redistributeOverCapacityChunks(sourceNodeId: string, app: typeof 
         app.pendingAcks.delete(ackKey);
         resolve(ok);
       });
-      targetSocket.send(
+      // Binary frame layout: [4-byte meta length (BE uint32)][meta JSON][raw chunk bytes]
+      // Must match the desktop client's binary handler in sync.ts.
+      const relayMeta = Buffer.from(
         JSON.stringify({
           type: "chunk_relay",
-          payload: {
-            fileId: chunk.fileId,
-            shardIndex: chunk.shardIndex,
-            chunkHash: chunk.chunkHash,
-            isData: chunk.isData,
-            ackNonce,
-            data: chunkData.toString("base64"),
-          },
+          fileId: chunk.fileId,
+          shardIndex: chunk.shardIndex,
+          chunkHash: chunk.chunkHash,
+          isData: chunk.isData,
+          ackNonce,
         }),
+        "utf8",
       );
+      const lenBuf = Buffer.allocUnsafe(4);
+      lenBuf.writeUInt32BE(relayMeta.length, 0);
+      targetSocket.send(Buffer.concat([lenBuf, relayMeta, chunkData]), { binary: true });
     });
 
     if (!acked) {

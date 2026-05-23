@@ -41,6 +41,20 @@ import {
 } from "@swarmvault/shared";
 import WebSocketLib from "ws";
 
+// ─── Timeout constants ─────────────────────────────────────────────────────
+// German residential upload averages ~10 Mbit/s; worst case DSL is ~1 Mbit/s.
+// A single shard can be up to 50 MB → allow 5 minutes per shard/download.
+const CHUNK_UPLOAD_TIMEOUT_MS = 5 * 60_000; // 5 min — per shard upload
+const DOWNLOAD_TIMEOUT_MS = 5 * 60_000; // 5 min — full file download
+const META_TIMEOUT_MS = 30_000; // 30 s  — metadata / small JSON calls
+
+/** `fetch` wrapper that aborts after `ms` milliseconds. */
+function fetchSync(url: string, init: RequestInit, ms: number): Promise<Response> {
+  const ctrl = new AbortController();
+  const id = setTimeout(() => ctrl.abort(), ms);
+  return fetch(url, { ...init, signal: ctrl.signal }).finally(() => clearTimeout(id));
+}
+
 // ─── Module-level state ────────────────────────────────────────────────────
 
 let watcher: FSWatcher | null = null;
@@ -200,10 +214,14 @@ export const syncClient = {
 
     // Soft-delete (trash) — stays in vault for 30 days then auto-purged
     try {
-      await fetch(`${settings.serverUrl}/api/v1/files/${entry.id}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${settings.authToken}` },
-      });
+      await fetchSync(
+        `${settings.serverUrl}/api/v1/files/${entry.id}`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${settings.authToken}` },
+        },
+        META_TIMEOUT_MS,
+      );
       serverManifest.delete(virtualPath);
       console.log(`[sync] Moved to trash: ${virtualPath}`);
     } catch (err) {
@@ -298,14 +316,18 @@ export const syncClient = {
     const url = existingFileId ? `${settings.serverUrl}/api/v1/files/${existingFileId}` : `${settings.serverUrl}/api/v1/files`;
     const method = existingFileId ? "PUT" : "POST";
 
-    const regRes = await fetch(url, {
-      method,
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${settings.authToken}`,
+    const regRes = await fetchSync(
+      url,
+      {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${settings.authToken}`,
+        },
+        body: JSON.stringify(bodyPayload),
       },
-      body: JSON.stringify(bodyPayload),
-    });
+      META_TIMEOUT_MS,
+    );
 
     console.log(`[sync] File registration response: ${regRes.status}`);
     if (!regRes.ok && regRes.status !== 202) {
@@ -339,19 +361,23 @@ export const syncClient = {
       const targetNode = shardAssignment[i % shardAssignment.length]!;
 
       console.log(`[sync] Uploading shard ${i}/${totalShards - 1} (${serialized.length} bytes) → node ${targetNode.nodeId}`);
-      const chunkRes = await fetch(`${settings.serverUrl}/api/v1/chunks`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/octet-stream",
-          Authorization: `Bearer ${settings.authToken}`,
-          "X-File-Id": regData.file.id,
-          "X-Shard-Index": String(i),
-          "X-Chunk-Hash": chunkHash,
-          "X-Is-Data": String(i < DEFAULT_DATA_SHARDS),
-          "X-Node-Id": targetNode.nodeId,
+      const chunkRes = await fetchSync(
+        `${settings.serverUrl}/api/v1/chunks`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/octet-stream",
+            Authorization: `Bearer ${settings.authToken}`,
+            "X-File-Id": regData.file.id,
+            "X-Shard-Index": String(i),
+            "X-Chunk-Hash": chunkHash,
+            "X-Is-Data": String(i < DEFAULT_DATA_SHARDS),
+            "X-Node-Id": targetNode.nodeId,
+          },
+          body: serialized,
         },
-        body: serialized,
-      });
+        CHUNK_UPLOAD_TIMEOUT_MS,
+      );
       console.log(`[sync] Shard ${i} response: ${chunkRes.status}`);
 
       if (!chunkRes.ok) {
@@ -381,9 +407,13 @@ export const syncClient = {
 
   async refreshManifest(settings: ReturnType<typeof storageManager.getSettings>): Promise<void> {
     if (!settings.authToken) return;
-    const res = await fetch(`${settings.serverUrl}/api/v1/files/manifest`, {
-      headers: { Authorization: `Bearer ${settings.authToken}` },
-    });
+    const res = await fetchSync(
+      `${settings.serverUrl}/api/v1/files/manifest`,
+      {
+        headers: { Authorization: `Bearer ${settings.authToken}` },
+      },
+      META_TIMEOUT_MS,
+    );
     if (!res.ok) return;
     const { files } = (await res.json()) as { files: ManifestEntry[] };
     serverManifest.clear();
@@ -472,21 +502,29 @@ export const syncClient = {
 
   async refreshShareShadow(fileId: string, settings: ReturnType<typeof storageManager.getSettings>): Promise<void> {
     if (!settings.authToken) return;
-    const check = await fetch(`${settings.serverUrl}/api/v1/files/${fileId}/share`, {
-      headers: { Authorization: `Bearer ${settings.authToken}` },
-    }).catch(() => null);
+    const check = await fetchSync(
+      `${settings.serverUrl}/api/v1/files/${fileId}/share`,
+      {
+        headers: { Authorization: `Bearer ${settings.authToken}` },
+      },
+      META_TIMEOUT_MS,
+    ).catch(() => null);
     if (!check?.ok) return; // no active share
 
     try {
       const plaintext = await this.downloadFileToBuffer(fileId, settings);
-      await fetch(`${settings.serverUrl}/api/v1/files/${fileId}/share`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${settings.authToken}`,
-          "Content-Type": "application/octet-stream",
+      await fetchSync(
+        `${settings.serverUrl}/api/v1/files/${fileId}/share`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${settings.authToken}`,
+            "Content-Type": "application/octet-stream",
+          },
+          body: plaintext,
         },
-        body: plaintext,
-      });
+        META_TIMEOUT_MS,
+      );
       console.log(`[sync] Share shadow refreshed for file ${fileId}`);
     } catch (err) {
       console.error(`[sync] Share shadow refresh failed:`, err);
@@ -512,9 +550,13 @@ export const syncClient = {
   async downloadFileToBuffer(fileId: string, settings: ReturnType<typeof storageManager.getSettings>): Promise<Buffer> {
     if (!settings.authToken) throw new Error("Not authenticated");
 
-    const res = await fetch(`${settings.serverUrl}/api/v1/files/${fileId}/download`, {
-      headers: { Authorization: `Bearer ${settings.authToken}` },
-    });
+    const res = await fetchSync(
+      `${settings.serverUrl}/api/v1/files/${fileId}/download`,
+      {
+        headers: { Authorization: `Bearer ${settings.authToken}` },
+      },
+      DOWNLOAD_TIMEOUT_MS,
+    );
 
     if (!res.ok) {
       const errBody = await res.json().catch(() => ({}));
@@ -753,9 +795,13 @@ export const syncClient = {
       // Subsequent attempts: wait before polling.
       if (attempt > 0) await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
       try {
-        const res = await fetch(`${serverUrl}/api/v1/files/${fileId}/assignment`, {
-          headers: { Authorization: `Bearer ${authToken}` },
-        });
+        const res = await fetchSync(
+          `${serverUrl}/api/v1/files/${fileId}/assignment`,
+          {
+            headers: { Authorization: `Bearer ${authToken}` },
+          },
+          META_TIMEOUT_MS,
+        );
         if (res.ok) {
           const { shardAssignment } = (await res.json()) as {
             shardAssignment: { shardIndex: number; nodeId: string; nodeRelayToken: string }[];
