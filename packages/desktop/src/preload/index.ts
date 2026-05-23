@@ -51,6 +51,15 @@ const api = {
   // Direct poll — get current WS connection state without waiting for an event
   getSyncConnected: () => ipcRenderer.invoke("sync:isConnected") as Promise<boolean>,
 
+  // System info
+  getSystemHostname: () => ipcRenderer.invoke("system:hostname") as Promise<string>,
+
+  // Fires when the sync client uploads a file (use to refresh FileManager)
+  onSyncChanged: (cb: () => void) => {
+    ipcRenderer.on("sync:changed", cb);
+    return () => ipcRenderer.removeListener("sync:changed", cb);
+  },
+
   // Event subscriptions
   onSyncStatus: (cb: (status: { connected: boolean }) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, status: { connected: boolean }) => cb(status);

@@ -73,6 +73,8 @@ export default function FileManager() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<SwarmFile | null>(null);
+  const [pendingPurge, setPendingPurge] = useState<TrashedFile | null>(null);
 
   // ── Trash tab state ────────────────────────────────────────────────────────
   const [trashFiles, setTrashFiles] = useState<TrashedFile[]>([]);
@@ -103,6 +105,11 @@ export default function FileManager() {
     const timer = setInterval(load, 30_000);
     return () => clearInterval(timer);
   }, []);
+  // Immediately refresh when the sync client finishes uploading a file
+  useEffect(() => {
+    const unsub = window.swarmvault.onSyncChanged(() => load());
+    return unsub;
+  }, []);
   useEffect(() => {
     if (tab === "trash") loadTrash();
   }, [tab]);
@@ -127,8 +134,9 @@ export default function FileManager() {
     }
   };
 
-  const handleDelete = async (file: SwarmFile) => {
-    if (!window.confirm(`Move "${file.name}" to trash?\n\nIt will be automatically deleted after 30 days. Your local copy (if any) is kept.`)) return;
+  const handleDelete = (file: SwarmFile) => setPendingDelete(file);
+
+  const confirmDelete = async (file: SwarmFile) => {
     setDeletingId(file.id);
     setActionResult(null);
     try {
@@ -155,8 +163,9 @@ export default function FileManager() {
     }
   };
 
-  const handlePurge = async (file: TrashedFile) => {
-    if (!window.confirm(`Permanently delete "${file.name}"?\n\nThis cannot be undone.`)) return;
+  const handlePurge = (file: TrashedFile) => setPendingPurge(file);
+
+  const confirmPurge = async (file: TrashedFile) => {
     setPurgingId(file.id);
     try {
       await window.swarmvault.deleteFilePermanent(file.id);
@@ -379,6 +388,47 @@ export default function FileManager() {
             })}
           </div>
         ))}
+      {/* ── Inline confirmation dialogs ─────────────────────────────────────────────── */}
+      {pendingDelete && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setPendingDelete(null)}>
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 max-w-sm w-full mx-4 space-y-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-semibold">Move to Trash?</h3>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              <span className="text-slate-200 font-medium">"{pendingDelete.name}"</span> will be moved to trash and permanently deleted after 30 days. Your local copy (if any) is kept.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setPendingDelete(null)} className="text-xs px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 transition-colors">
+                Cancel
+              </button>
+              <button
+                onClick={() => { void confirmDelete(pendingDelete); setPendingDelete(null); }}
+                className="text-xs px-3 py-1.5 rounded-lg bg-red-700 hover:bg-red-600 transition-colors">
+                Move to Trash
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {pendingPurge && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setPendingPurge(null)}>
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 max-w-sm w-full mx-4 space-y-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-semibold text-red-400">Permanently Delete?</h3>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              <span className="text-slate-200 font-medium">"{pendingPurge.name}"</span> will be permanently deleted. <span className="text-red-400">This cannot be undone.</span>
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setPendingPurge(null)} className="text-xs px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 transition-colors">
+                Cancel
+              </button>
+              <button
+                onClick={() => { void confirmPurge(pendingPurge); setPendingPurge(null); }}
+                className="text-xs px-3 py-1.5 rounded-lg bg-red-700 hover:bg-red-600 text-red-100 transition-colors">
+                Delete Forever
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

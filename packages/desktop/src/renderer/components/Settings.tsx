@@ -47,6 +47,7 @@ export default function SettingsPanel() {
   const [authError, setAuthError] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const [loggedInUser, setLoggedInUser] = useState<{ email: string; username: string } | null>(null);
+  const [displayName, setDisplayName] = useState("");
 
   const reload = async () => {
     const s = (await window.swarmvault.getSettings()) as Settings;
@@ -75,6 +76,8 @@ export default function SettingsPanel() {
 
   useEffect(() => {
     reload();
+    // Pre-populate node display name with the machine hostname
+    (window.swarmvault.getSystemHostname() as Promise<string>).then((h) => setDisplayName(h)).catch(() => {});
     const unsub = window.swarmvault.onAuthChanged((state) => {
       setLoggedInUser(state.loggedIn ? state.user : null);
       reload();
@@ -141,7 +144,7 @@ export default function SettingsPanel() {
     if (!settings) return;
     try {
       await window.swarmvault.registerNode({
-        displayName: `My PC`,
+        displayName: displayName.trim() || "My PC",
         tier: "swarm", // server auto-promotes based on uptime
         pledgedBytes: gbToBytes(pledgedGb),
       });
@@ -274,9 +277,21 @@ export default function SettingsPanel() {
         </div>
 
         {!settings.nodeId ? (
-          <button onClick={handleRegisterNode} className="w-full py-2.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-sm font-medium transition-colors">
-            Register This PC as a Node
-          </button>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <label className="text-xs text-slate-400">Node Display Name</label>
+              <input
+                type="text"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="My PC"
+                className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-violet-500 placeholder:text-slate-500"
+              />
+            </div>
+            <button onClick={handleRegisterNode} disabled={!displayName.trim()} className="w-full py-2.5 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-sm font-medium transition-colors">
+              Register This PC as a Node
+            </button>
+          </div>
         ) : (
           <div className="text-xs text-emerald-400 flex items-center gap-1.5">
             ✓ Node registered <code className="text-slate-300">{settings.nodeId?.slice(0, 8)}…</code>

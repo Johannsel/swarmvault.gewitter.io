@@ -4,7 +4,7 @@
 export const CHUNK_SIZE_BYTES = 1 * 1024 * 1024; // 1 MB per shard
 // Beta: reduced shard counts so uploads work with fewer online nodes.
 // Restore to 4 data + 2 parity for production.
-export const DEFAULT_DATA_SHARDS = 2;
+export const DEFAULT_DATA_SHARDS = 1;
 export const DEFAULT_PARITY_SHARDS = 1; // tolerate up to 1 missing shard
 export const MIN_NODES_FOR_STORE = DEFAULT_DATA_SHARDS + DEFAULT_PARITY_SHARDS;
 export const BASE_STORAGE_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB free for everyone

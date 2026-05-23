@@ -33,12 +33,47 @@ const redis = new IORedis(config.REDIS_URL, { maxRetriesPerRequest: null });
 
 const rewardQueue = new Queue("rewards", { connection: redis });
 const nodeHealthQueue = new Queue("node-health", { connection: redis });
+const maintenanceQueue = new Queue("maintenance", { connection: redis });
+
+// Fail fast in production if PUBLIC_URL is not configured — it is embedded in
+// share URLs so omitting it allows host-header injection attacks.
+if (config.NODE_ENV === "production" && !config.PUBLIC_URL) {
+  console.error("❌  PUBLIC_URL must be set in production (required for share URLs).");
+  process.exit(1);
+}
 
 // Reward snapshot worker
 new Worker(
   "rewards",
   async () => {
     await rewardService.runSnapshot();
+  },
+  { connection: redis },
+);
+
+// Maintenance worker — shadow-file cleanup, trash purge, tier promotion
+new Worker(
+  "maintenance",
+  async (job) => {
+    if (job.name === "cleanup-shares") {
+      const deleted = await prisma.sharedFile.deleteMany({ where: { expiresAt: { lt: new Date() } } });
+      if (deleted.count > 0) console.log(`[sharing] Pruned ${deleted.count} expired shadow file(s)`);
+    } else if (job.name === "purge-trash") {
+      const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const trashed = await prisma.swarmFile.findMany({ where: { deletedAt: { lt: cutoff } }, select: { id: true } });
+      if (trashed.length > 0) {
+        await prisma.swarmFile.deleteMany({ where: { id: { in: trashed.map((f) => f.id) } } });
+        console.log(`[trash] Permanently deleted ${trashed.length} file(s) older than 30 days`);
+      }
+    } else if (job.name === "tier-promotion") {
+      const [promoted, demoted] = await Promise.all([
+        prisma.storageNode.updateMany({ where: { uptimePct: { gte: 80 }, tier: "swarm" }, data: { tier: "vault" } }),
+        prisma.storageNode.updateMany({ where: { uptimePct: { lt: 80 }, tier: "vault" }, data: { tier: "swarm" } }),
+      ]);
+      if (promoted.count > 0 || demoted.count > 0) {
+        console.log(`[tier] Promoted ${promoted.count} node(s) to vault, demoted ${demoted.count} to swarm`);
+      }
+    }
   },
   { connection: redis },
 );
@@ -59,6 +94,9 @@ new Worker(
 // Schedule recurring jobs (idempotent — repeatable jobs are de-duped by key)
 await rewardQueue.add("snapshot", {}, { repeat: { pattern: config.REWARD_CRON }, jobId: "reward-snapshot" });
 await nodeHealthQueue.add("check", {}, { repeat: { every: 60_000 }, jobId: "node-health-check" });
+await maintenanceQueue.add("cleanup-shares", {}, { repeat: { every: 60 * 60 * 1000 }, jobId: "maintenance-cleanup-shares" });
+await maintenanceQueue.add("purge-trash", {}, { repeat: { every: 60 * 60 * 1000 }, jobId: "maintenance-purge-trash" });
+await maintenanceQueue.add("tier-promotion", {}, { repeat: { every: 60 * 60 * 1000 }, jobId: "maintenance-tier-promotion" });
 
 // ─────────────────────────────────────────────
 //  Fastify app
@@ -68,6 +106,7 @@ const fastify = Fastify({
   logger: {
     level: config.NODE_ENV === "development" ? "debug" : "info",
   },
+  trustProxy: true, // Required behind Traefik: enables correct X-Forwarded-For / client IP resolution
 });
 
 // Augment FastifyInstance with `authenticate` decorator
@@ -133,54 +172,6 @@ await fastify.register(retrievalRoutes, { prefix: `${API_BASE}/files` });
 await fastify.register(rewardRoutes, { prefix: `${API_BASE}/rewards` });
 await fastify.register(sharingRoutes, { prefix: `${API_BASE}/files` });
 await fastify.register(publicShareRoutes, { prefix: `${API_BASE}/share` });
-
-// Expired shadow-file cleanup — runs every hour
-setInterval(
-  async () => {
-    const deleted = await prisma.sharedFile.deleteMany({
-      where: { expiresAt: { lt: new Date() } },
-    });
-    if (deleted.count > 0) fastify.log.info(`[sharing] Pruned ${deleted.count} expired shadow file(s)`);
-  },
-  60 * 60 * 1000,
-);
-
-// 30-day trash purge — hard-deletes files that have been in trash longer than 30 days
-setInterval(
-  async () => {
-    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const trashed = await prisma.swarmFile.findMany({
-      where: { deletedAt: { lt: cutoff } },
-      select: { id: true },
-    });
-    if (trashed.length > 0) {
-      await prisma.swarmFile.deleteMany({ where: { id: { in: trashed.map((f) => f.id) } } });
-      fastify.log.info(`[trash] Permanently deleted ${trashed.length} file(s) older than 30 days`);
-    }
-  },
-  60 * 60 * 1000,
-);
-
-// Tier auto-promotion — every hour, promote nodes with ≥80% uptime to vault and
-// demote nodes below 80% back to swarm. No manual tier selection needed.
-setInterval(
-  async () => {
-    const [promoted, demoted] = await Promise.all([
-      prisma.storageNode.updateMany({
-        where: { uptimePct: { gte: 80 }, tier: "swarm" },
-        data: { tier: "vault" },
-      }),
-      prisma.storageNode.updateMany({
-        where: { uptimePct: { lt: 80 }, tier: "vault" },
-        data: { tier: "swarm" },
-      }),
-    ]);
-    if (promoted.count > 0 || demoted.count > 0) {
-      fastify.log.info(`[tier] Promoted ${promoted.count} node(s) to vault, demoted ${demoted.count} to swarm`);
-    }
-  },
-  60 * 60 * 1000,
-);
 
 // Health check
 fastify.get("/health", async () => ({ status: "ok", ts: new Date().toISOString() }));

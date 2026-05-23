@@ -1,10 +1,19 @@
 import path from "node:path";
 import fs from "node:fs/promises";
+import os from "node:os";
 import { ipcMain as IpcMain, BrowserWindow } from "electron";
 import { storageManager } from "./storage.js";
 import { syncClient } from "./sync.js";
 
 type IpcMainType = typeof IpcMain;
+
+/** Fetch with an AbortController timeout (default 30 s). Prevents IPC handlers
+ * from hanging indefinitely when the server is unreachable or slow. */
+function fetchWithTimeout(url: string, options: RequestInit = {}, ms = 30_000): Promise<Response> {
+  const ctrl = new AbortController();
+  const id = setTimeout(() => ctrl.abort(), ms);
+  return fetch(url, { ...options, signal: ctrl.signal }).finally(() => clearTimeout(id));
+}
 
 export const ipcHandlers = {
   register(ipcMain: IpcMainType, mainWindow: BrowserWindow | null): void {
@@ -15,8 +24,12 @@ export const ipcHandlers = {
     });
 
     ipcMain.handle("settings:update", (_event, partial: Record<string, unknown>) => {
+      // Whitelist permitted keys — prevents the renderer from writing arbitrary
+      // entries (e.g. authToken, nodeId, relayToken) into the persistent store.
+      const ALLOWED_SETTINGS = new Set(["pledgedBytes", "syncDir", "serverUrl"]);
+      const safe = Object.fromEntries(Object.entries(partial).filter(([k]) => ALLOWED_SETTINGS.has(k)));
       const before = storageManager.getSettings();
-      storageManager.updateSettings(partial);
+      storageManager.updateSettings(safe);
       const after = storageManager.getSettings();
       // If the sync folder changed, restart the watcher on the new path
       if (after.syncDir !== before.syncDir && after.authToken && after.nodeId) {
@@ -29,11 +42,11 @@ export const ipcHandlers = {
 
     ipcMain.handle("auth:login", async (_event, { email, password }: { email: string; password: string }) => {
       const settings = storageManager.getSettings();
-      const res = await fetch(`${settings.serverUrl}/api/v1/auth/login`, {
+      const res = await fetchWithTimeout(`${settings.serverUrl}/api/v1/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
-      });
+      }, 15_000);
       if (!res.ok) {
         const text = await res.text();
         let msg = "Login failed";
@@ -55,11 +68,11 @@ export const ipcHandlers = {
 
     ipcMain.handle("auth:register", async (_event, { email, username, password }: { email: string; username: string; password: string }) => {
       const settings = storageManager.getSettings();
-      const res = await fetch(`${settings.serverUrl}/api/v1/auth/register`, {
+      const res = await fetchWithTimeout(`${settings.serverUrl}/api/v1/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, username, password }),
-      });
+      }, 15_000);
       if (!res.ok) {
         const text = await res.text();
         let msg = "Registration failed";
@@ -106,14 +119,14 @@ export const ipcHandlers = {
         const settings = storageManager.getSettings();
         if (!settings.authToken) throw new Error("Not authenticated");
 
-        const res = await fetch(`${settings.serverUrl}/api/v1/nodes`, {
+        const res = await fetchWithTimeout(`${settings.serverUrl}/api/v1/nodes`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${settings.authToken}`,
           },
           body: JSON.stringify({ displayName, tier, pledgedBytes }),
-        });
+        }, 15_000);
 
         if (!res.ok) throw new Error(await res.text());
         const { node } = (await res.json()) as { node: { id: string; relayToken: string } };
@@ -153,7 +166,7 @@ export const ipcHandlers = {
       const settings = storageManager.getSettings();
       if (!settings.authToken || !settings.nodeId) return null;
       try {
-        const res = await fetch(`${settings.serverUrl}/api/v1/nodes`, {
+        const res = await fetchWithTimeout(`${settings.serverUrl}/api/v1/nodes`, {
           headers: { Authorization: `Bearer ${settings.authToken}` },
         });
         if (!res.ok) return null;
@@ -197,9 +210,13 @@ export const ipcHandlers = {
       if (params.path) qs.set("path", params.path);
       if (params.status) qs.set("status", params.status);
 
-      const res = await fetch(`${settings.serverUrl}/api/v1/files?${qs}`, {
+      const res = await fetchWithTimeout(`${settings.serverUrl}/api/v1/files?${qs}`, {
         headers: { Authorization: `Bearer ${settings.authToken}` },
       });
+      if (!res.ok) {
+        if (res.status === 401) mainWindow?.webContents.send("auth:changed", { loggedIn: false, user: null });
+        return { files: [], total: 0 };
+      }
       const json = (await res.json()) as { files: Array<{ path: string; [key: string]: unknown }> };
 
       // Annotate each file with whether it exists in the local sync folder
@@ -233,10 +250,11 @@ export const ipcHandlers = {
     ipcMain.handle("files:deleteFromVault", async (_event, { fileId }: { fileId: string }) => {
       const settings = storageManager.getSettings();
       if (!settings.authToken) throw new Error("Not authenticated");
-      const res = await fetch(`${settings.serverUrl}/api/v1/files/${fileId}`, {
+      const res = await fetchWithTimeout(`${settings.serverUrl}/api/v1/files/${fileId}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${settings.authToken}` },
       });
+      if (res.status === 401) { mainWindow?.webContents.send("auth:changed", { loggedIn: false, user: null }); throw new Error("Session expired"); }
       if (!res.ok && res.status !== 404) throw new Error(await res.text());
       return { ok: true };
     });
@@ -246,7 +264,7 @@ export const ipcHandlers = {
     ipcMain.handle("rewards:get", async () => {
       const settings = storageManager.getSettings();
       if (!settings.authToken) return null;
-      const res = await fetch(`${settings.serverUrl}/api/v1/rewards`, {
+      const res = await fetchWithTimeout(`${settings.serverUrl}/api/v1/rewards`, {
         headers: { Authorization: `Bearer ${settings.authToken}` },
       });
       if (!res.ok) return null;
@@ -258,16 +276,20 @@ export const ipcHandlers = {
     ipcMain.handle("files:trash", async () => {
       const settings = storageManager.getSettings();
       if (!settings.authToken) throw new Error("Not authenticated");
-      const res = await fetch(`${settings.serverUrl}/api/v1/files/trash`, {
+      const res = await fetchWithTimeout(`${settings.serverUrl}/api/v1/files/trash`, {
         headers: { Authorization: `Bearer ${settings.authToken}` },
       });
+      if (!res.ok) {
+        if (res.status === 401) mainWindow?.webContents.send("auth:changed", { loggedIn: false, user: null });
+        return { files: [] };
+      }
       return res.json();
     });
 
     ipcMain.handle("files:restore", async (_event, { fileId }: { fileId: string }) => {
       const settings = storageManager.getSettings();
       if (!settings.authToken) throw new Error("Not authenticated");
-      const res = await fetch(`${settings.serverUrl}/api/v1/files/${fileId}/restore`, {
+      const res = await fetchWithTimeout(`${settings.serverUrl}/api/v1/files/${fileId}/restore`, {
         method: "POST",
         headers: { Authorization: `Bearer ${settings.authToken}` },
       });
@@ -278,7 +300,7 @@ export const ipcHandlers = {
     ipcMain.handle("files:deletePermanent", async (_event, { fileId }: { fileId: string }) => {
       const settings = storageManager.getSettings();
       if (!settings.authToken) throw new Error("Not authenticated");
-      const res = await fetch(`${settings.serverUrl}/api/v1/files/${fileId}/permanent`, {
+      const res = await fetchWithTimeout(`${settings.serverUrl}/api/v1/files/${fileId}/permanent`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${settings.authToken}` },
       });
@@ -324,15 +346,15 @@ export const ipcHandlers = {
       // Decrypt locally — server never sees plaintext
       const plaintext = await syncClient.downloadFileToBuffer(fileId, settings);
 
-      // Upload shadow copy to server
-      const res = await fetch(`${settings.serverUrl}/api/v1/files/${fileId}/share`, {
+      // Upload shadow copy to server (5 min timeout — large files can take a while)
+      const res = await fetchWithTimeout(`${settings.serverUrl}/api/v1/files/${fileId}/share`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${settings.authToken}`,
           "Content-Type": "application/octet-stream",
         },
         body: plaintext,
-      });
+      }, 300_000);
       if (!res.ok) throw new Error(await res.text());
       return res.json() as Promise<{ token: string; shareUrl: string; expiresAt: string }>;
     });
@@ -340,7 +362,7 @@ export const ipcHandlers = {
     ipcMain.handle("files:shareStatus", async (_event, { fileId }: { fileId: string }) => {
       const settings = storageManager.getSettings();
       if (!settings.authToken) throw new Error("Not authenticated");
-      const res = await fetch(`${settings.serverUrl}/api/v1/files/${fileId}/share`, {
+      const res = await fetchWithTimeout(`${settings.serverUrl}/api/v1/files/${fileId}/share`, {
         headers: { Authorization: `Bearer ${settings.authToken}` },
       });
       if (res.status === 404) return null;
@@ -351,13 +373,17 @@ export const ipcHandlers = {
     ipcMain.handle("files:unshare", async (_event, { fileId }: { fileId: string }) => {
       const settings = storageManager.getSettings();
       if (!settings.authToken) throw new Error("Not authenticated");
-      const res = await fetch(`${settings.serverUrl}/api/v1/files/${fileId}/share`, {
+      const res = await fetchWithTimeout(`${settings.serverUrl}/api/v1/files/${fileId}/share`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${settings.authToken}` },
       });
       if (!res.ok && res.status !== 404) throw new Error(await res.text());
       return { ok: true };
     });
+
+    // ── System info ───────────────────────────────────────────────────────────
+
+    ipcMain.handle("system:hostname", () => os.hostname());
 
     // ── Push events to renderer ───────────────────────────────────────────────
 
@@ -368,6 +394,11 @@ export const ipcHandlers = {
     // Forward real-time WS connection status changes to the renderer
     syncClient.setStatusChangeCallback((connected) => {
       mainWindow?.webContents.send("sync:status", { connected });
+    });
+
+    // Notify renderer when a file has been uploaded so FileManager can refresh
+    syncClient.setFilesChangedCallback(() => {
+      mainWindow?.webContents.send("sync:changed");
     });
 
     ipcMain.on("renderer:ready", () => {

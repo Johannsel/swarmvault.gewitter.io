@@ -2,7 +2,7 @@
 
 > Distributed peer-to-peer encrypted cloud storage — your data lives on the swarm, not a single server.
 
-SwarmVault is an **Electron desktop app** that automatically syncs a folder across a network of contributor nodes. Files are split into shards, encrypted client-side with **AES-256-GCM**, and distributed using **Reed-Solomon erasure coding** (4 data + 2 parity shards). A central orchestration server routes transfers and manages rewards — but it never sees your plaintext data.
+SwarmVault is an **Electron desktop app** that automatically syncs a folder across a network of contributor nodes. Files are split into shards, encrypted client-side with **AES-256-GCM**, and distributed using **Reed-Solomon erasure coding** (4 data + 2 parity shards in production; 1+1 during beta). A central orchestration server routes transfers and manages rewards — but it never sees your plaintext data.
 
 ---
 
@@ -39,11 +39,11 @@ Each chunk encrypted with AES-256-GCM
   Per-shard key derived from master key + shard index
         │
         ▼
-Reed-Solomon parity shards added (2 data + 1 parity — beta; 4+2 in production)
-  Any 2 of 3 shards can reconstruct the file
+Reed-Solomon parity shards added (1 data + 1 parity — beta; 4+2 in production)
+  Any 1 of 2 shards can reconstruct the file
         │
         ▼
-Server selects 6 online storage nodes (load-balanced)
+Server selects online storage nodes — 2 during beta, 6 in production (load-balanced)
         │
         ▼
 Each encrypted shard relayed over WebSocket to a node

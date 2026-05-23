@@ -49,6 +49,7 @@ let authTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
 let ws: WebSocketLib | null = null;
 let isAuthenticated = false;
 let statusChangeCallback: ((connected: boolean) => void) | null = null;
+let filesChangedCallback: (() => void) | null = null;
 
 /** Paths currently being written by the sync client — suppress watcher events. */
 const downloadingPaths = new Set<string>();
@@ -78,12 +79,16 @@ const serverManifest = new Map<string, ManifestEntry>();
 export const syncClient = {
   async init(): Promise<void> {
     const settings = storageManager.getSettings();
-    if (!settings.authToken || !settings.nodeId) {
-      console.log("[sync] Not authenticated — skipping sync init");
+    if (!settings.authToken) {
+      console.log("[sync] Not logged in — skipping sync init");
       return;
     }
 
-    this.startWebSocket(settings.serverUrl, settings.nodeId, settings.relayToken!);
+    // Start WS connection only if this PC is also a registered storage node.
+    // Uploading files to the vault only requires an auth token.
+    if (settings.nodeId && settings.relayToken) {
+      this.startWebSocket(settings.serverUrl, settings.nodeId, settings.relayToken);
+    }
 
     // Populate manifest before starting the watcher so onFileAdded can skip
     // files that are already in sync.
@@ -351,6 +356,7 @@ export const syncClient = {
     });
 
     console.log(`[sync] Uploaded: ${virtualPath} (${shards.length} shards)`);
+    filesChangedCallback?.();
     return regData.file.id;
   },
 
@@ -722,7 +728,9 @@ export const syncClient = {
     const MAX_ATTEMPTS = 30;
 
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+      // First attempt: check immediately (nodes may have just come online).
+      // Subsequent attempts: wait before polling.
+      if (attempt > 0) await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
       try {
         const res = await fetch(`${serverUrl}/api/v1/files/${fileId}/assignment`, {
           headers: { Authorization: `Bearer ${authToken}` },
@@ -747,5 +755,9 @@ export const syncClient = {
 
   setStatusChangeCallback(cb: (connected: boolean) => void): void {
     statusChangeCallback = cb;
+  },
+
+  setFilesChangedCallback(cb: () => void): void {
+    filesChangedCallback = cb;
   },
 };
