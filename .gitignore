@@ -42,3 +42,5 @@ releases/**/*.zip
 
 # ── Prisma generated client ───────────────────────────────────────────────────
 packages/server/node_modules/.prisma/
+
+*.zip
