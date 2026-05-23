@@ -45,7 +45,9 @@ import WebSocketLib from "ws";
 
 let watcher: FSWatcher | null = null;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+let authTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
 let ws: WebSocketLib | null = null;
+let isAuthenticated = false;
 let statusChangeCallback: ((connected: boolean) => void) | null = null;
 
 /** Paths currently being written by the sync client — suppress watcher events. */
@@ -525,6 +527,7 @@ export const syncClient = {
     const wsUrl = serverUrl.replace(/^http/, "ws") + "/ws";
 
     const connect = () => {
+      isAuthenticated = false;
       ws = new WebSocketLib(wsUrl);
 
       ws.onopen = () => {
@@ -532,6 +535,14 @@ export const syncClient = {
         // Don't report connected yet; wait for auth_ack so the status only
         // shows "Connected" after the server has confirmed the credentials.
         ws!.send(JSON.stringify({ type: "auth", payload: { nodeId, relayToken } }));
+        // If auth_ack is not received within 10 s the server is either not
+        // responding or silently rejecting the credentials — close and retry.
+        authTimeoutTimer = setTimeout(() => {
+          if (!isAuthenticated) {
+            console.warn("[ws] Auth timeout — no auth_ack received, reconnecting");
+            ws?.close();
+          }
+        }, 10_000);
       };
 
       ws.onmessage = (event) => {
@@ -541,6 +552,11 @@ export const syncClient = {
           // auth_ack: credentials accepted — mark connected and start heartbeat
           if (msg.type === "auth_ack") {
             console.log("[ws] Authenticated");
+            if (authTimeoutTimer) {
+              clearTimeout(authTimeoutTimer);
+              authTimeoutTimer = null;
+            }
+            isAuthenticated = true;
             statusChangeCallback?.(true);
             void this.sendHeartbeat(nodeId, relayToken);
             heartbeatTimer = setInterval(() => void this.sendHeartbeat(nodeId, relayToken), HEARTBEAT_INTERVAL_MS);
@@ -555,6 +571,11 @@ export const syncClient = {
 
       ws.onclose = (event) => {
         if (heartbeatTimer) clearInterval(heartbeatTimer);
+        if (authTimeoutTimer) {
+          clearTimeout(authTimeoutTimer);
+          authTimeoutTimer = null;
+        }
+        isAuthenticated = false;
         statusChangeCallback?.(false);
 
         // Code 4001: server explicitly rejected credentials.
@@ -668,6 +689,11 @@ export const syncClient = {
     watcher?.close();
     ws?.close();
     if (heartbeatTimer) clearInterval(heartbeatTimer);
+    if (authTimeoutTimer) {
+      clearTimeout(authTimeoutTimer);
+      authTimeoutTimer = null;
+    }
+    isAuthenticated = false;
   },
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -714,7 +740,7 @@ export const syncClient = {
   },
 
   isConnected(): boolean {
-    return ws?.readyState === WebSocketLib.OPEN;
+    return isAuthenticated;
   },
 
   setStatusChangeCallback(cb: (connected: boolean) => void): void {
