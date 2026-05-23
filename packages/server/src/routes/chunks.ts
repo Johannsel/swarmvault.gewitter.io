@@ -15,8 +15,11 @@ type ChunkFastify = FastifyInstance & {
 };
 
 export async function chunkRoutes(fastify: ChunkFastify): Promise<void> {
+  // 115 MB — accommodates a 100 MB file (1 data shard = file size) plus AES-GCM overhead.
+  const CHUNK_BODY_LIMIT = 115 * 1024 * 1024;
+
   // Accept raw binary bodies for this plugin scope
-  fastify.addContentTypeParser("application/octet-stream", { parseAs: "buffer" }, (_req, body, done) => done(null, body));
+  fastify.addContentTypeParser("application/octet-stream", { parseAs: "buffer", bodyLimit: CHUNK_BODY_LIMIT }, (_req, body, done) => done(null, body));
 
   const preHandler = [fastify.authenticate];
 
@@ -34,7 +37,7 @@ export async function chunkRoutes(fastify: ChunkFastify): Promise<void> {
    *   X-Is-Data      — "true" | "false"  (false = parity shard)
    *   X-Node-Id      — target StorageNode.id from the shard assignment
    */
-  fastify.post("/", { preHandler }, async (request, reply) => {
+  fastify.post("/", { preHandler, bodyLimit: CHUNK_BODY_LIMIT }, async (request, reply) => {
     const payload = request.user as { sub: string };
 
     const fileId = request.headers["x-file-id"] as string | undefined;

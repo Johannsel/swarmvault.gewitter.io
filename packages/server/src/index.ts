@@ -169,7 +169,7 @@ await fastify.register(nodeRoutes, { prefix: `${API_BASE}/nodes` });
 await fastify.register(fileRoutes, { prefix: `${API_BASE}/files` });
 // 110 MB — enough headroom above the 100 MB file cap (1 data shard = file size + 28-byte encryption overhead).
 // All other routes keep Fastify's default 1 MB limit so oversized JSON payloads are still rejected.
-await fastify.register(chunkRoutes, { prefix: `${API_BASE}/chunks`, bodyLimit: 115 * 1024 * 1024 });
+await fastify.register(chunkRoutes, { prefix: `${API_BASE}/chunks` });
 await fastify.register(retrievalRoutes, { prefix: `${API_BASE}/files` });
 await fastify.register(rewardRoutes, { prefix: `${API_BASE}/rewards` });
 await fastify.register(sharingRoutes, { prefix: `${API_BASE}/files` });
