@@ -37,7 +37,11 @@ export const ipcHandlers = {
       if (!res.ok) {
         const text = await res.text();
         let msg = "Login failed";
-        try { msg = (JSON.parse(text) as { error?: string }).error ?? msg; } catch { /* not JSON */ }
+        try {
+          msg = (JSON.parse(text) as { error?: string }).error ?? msg;
+        } catch {
+          /* not JSON */
+        }
         throw new Error(msg);
       }
       const data = (await res.json()) as { token: string; user: { id: string; email: string; username: string } };
@@ -67,7 +71,9 @@ export const ipcHandlers = {
                 .map(([f, msgs]) => `${f}: ${msgs.join(", ")}`)
                 .join(" | ")
             : (err.error ?? msg);
-        } catch { /* not JSON */ }
+        } catch {
+          /* not JSON */
+        }
         throw new Error(msg);
       }
       const data = (await res.json()) as { token: string; user: { id: string; email: string; username: string } };
