@@ -404,6 +404,19 @@ export const ipcHandlers = {
 
     ipcMain.handle("system:hostname", () => os.hostname());
 
+    // ── Swarm-wide stats (public endpoint, no auth required) ─────────────────
+
+    ipcMain.handle("swarm:stats", async () => {
+      const settings = storageManager.getSettings();
+      try {
+        const res = await fetchWithTimeout(`${settings.serverUrl}/api/v1/nodes/swarm-stats`, {}, 10_000);
+        if (!res.ok) return null;
+        return res.json();
+      } catch {
+        return null;
+      }
+    });
+
     // ── Push events to renderer ───────────────────────────────────────────────
 
     // Direct poll — renderer calls this on mount to get the current state

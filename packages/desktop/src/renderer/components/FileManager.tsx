@@ -83,6 +83,13 @@ export default function FileManager() {
   const [purgingId, setPurgingId] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
+  // Auto-dismiss a transient action result after a timeout; returns a cleanup fn.
+  const showActionResult = (result: { ok: boolean; msg: string }) => {
+    setActionResult(result);
+    const id = setTimeout(() => setActionResult(null), 8_000);
+    return id;
+  };
+
   const load = async () => {
     setLoading(true);
     const res = (await window.swarmvault.listFiles({}).catch(() => null)) as {
@@ -111,14 +118,18 @@ export default function FileManager() {
     const unsub = window.swarmvault.onSyncChanged(() => load());
     return unsub;
   }, []);
-  // Show a banner when the sync client fails to upload a file
+  // Show a banner when the sync client fails to upload a file; clean up on unmount
   useEffect(() => {
+    let dismissId: ReturnType<typeof setTimeout>;
     const unsub = window.swarmvault.onUploadError((msg: string) => {
+      clearTimeout(dismissId);
       setUploadError(msg);
-      // Auto-dismiss after 12 seconds
-      setTimeout(() => setUploadError(null), 12_000);
+      dismissId = setTimeout(() => setUploadError(null), 12_000);
     });
-    return unsub;
+    return () => {
+      unsub();
+      clearTimeout(dismissId);
+    };
   }, []);
   useEffect(() => {
     if (tab === "trash") loadTrash();
@@ -135,10 +146,10 @@ export default function FileManager() {
     setActionResult(null);
     try {
       await window.swarmvault.downloadFileToSync(file.id, file.path);
-      setActionResult({ ok: true, msg: `✓ "${file.name}" downloaded to sync folder` });
+      showActionResult({ ok: true, msg: `✓ "${file.name}" downloaded to sync folder` });
       await load();
     } catch {
-      setActionResult({ ok: false, msg: `✗ Download failed — is the node online?` });
+      showActionResult({ ok: false, msg: `✗ Download failed — is the node online?` });
     } finally {
       setDownloadingId(null);
     }
@@ -151,10 +162,10 @@ export default function FileManager() {
     setActionResult(null);
     try {
       await window.swarmvault.deleteFileFromVault(file.id);
-      setActionResult({ ok: true, msg: `✓ "${file.name}" moved to trash` });
+      showActionResult({ ok: true, msg: `✓ "${file.name}" moved to trash` });
       await load();
     } catch {
-      setActionResult({ ok: false, msg: `✗ Delete failed` });
+      showActionResult({ ok: false, msg: `✗ Delete failed` });
     } finally {
       setDeletingId(null);
     }

@@ -2,7 +2,7 @@
 
 > Distributed peer-to-peer encrypted cloud storage — your data lives on the swarm, not a single server.
 
-SwarmVault is an **Electron desktop app** that automatically syncs a folder across a network of contributor nodes. Files are split into shards, encrypted client-side with **AES-256-GCM**, and distributed using **Reed-Solomon erasure coding** (4 data + 2 parity shards in production; 1+1 during beta). A central orchestration server routes transfers and manages rewards — but it never sees your plaintext data.
+SwarmVault is an **Electron desktop app** that automatically syncs a folder across a network of contributor nodes. Files are split into shards, encrypted client-side with **AES-256-GCM**, and distributed using **Reed-Solomon erasure coding** (4 data + 2 parity shards in production; 2+1 during beta). A central orchestration server routes transfers and manages rewards — but it never sees your plaintext data.
 
 ---
 
@@ -31,19 +31,19 @@ SwarmVault is an **Electron desktop app** that automatically syncs a folder acro
 User drops file into sync folder
         │
         ▼
-Desktop app splits file into chunks (1 MB each)
+Desktop app splits file into shards (2 equal halves — beta; 4 data shards in production)
         │
         ▼
-Each chunk encrypted with AES-256-GCM
+Each shard encrypted with AES-256-GCM
   Master key generated client-side, never sent to server
   Per-shard key derived from master key + shard index
         │
         ▼
-Reed-Solomon parity shards added (1 data + 1 parity — beta; 4+2 in production)
-  Any 1 of 2 shards can reconstruct the file
+Reed-Solomon parity shards added (2 data + 1 parity — beta; 4+2 in production)
+  Any 2 of 3 shards can reconstruct the file
         │
         ▼
-Server selects online storage nodes — 2 during beta, 6 in production (load-balanced)
+Server selects online storage nodes — 3 during beta, 6 in production (load-balanced)
         │
         ▼
 Each encrypted shard relayed over WebSocket to a node
@@ -182,8 +182,7 @@ swarmvault.gewitter.io/
 │               ├── App.tsx
 │               └── components/
 │                   ├── Dashboard.tsx    Storage overview, node status
-│                   ├── FileManager.tsx  Active files + trash tabs
-│                   ├── Rewards.tsx      Credit balance + chart
+│                   ├── FileManager.tsx  Active files + trash tabs                    ├── Info.tsx         Live swarm stats + how it works│                   ├── Rewards.tsx      Credit balance + chart
 │                   ├── Settings.tsx     Server URL, sync folder, node config
 │                   └── SyncSelector.tsx Selective sync per-file
 ├── package.json    (pnpm workspaces root)
@@ -265,8 +264,8 @@ All authenticated routes require `Authorization: Bearer <jwt>`.
   "mimeType": "image/jpeg",
   "sizeBytes": 4194304,
   "contentHash": "<hex SHA-256 of plaintext>",
-  "totalShards": 6,
-  "parityShards": 2,
+  "totalShards": 2,
+  "parityShards": 1,
   "encryptedMasterKey": "<base64url>"
 }
 ```
@@ -293,11 +292,13 @@ Headers required:
 
 ### Nodes — `/api/v1/nodes`
 
-| Method | Path         | Auth | Description                             |
-| ------ | ------------ | ---- | --------------------------------------- |
-| `POST` | `/`          | ✓    | Register a storage node                 |
-| `GET`  | `/`          | ✓    | List all nodes (including uptime stats) |
-| `POST` | `/heartbeat` | ✓    | Update node status + used bytes         |
+| Method | Path            | Auth | Description                             |
+| ------ | --------------- | ---- | --------------------------------------- |
+| `POST` | `/`             | ✓    | Register a storage node                 |
+| `GET`  | `/`             | ✓    | List all nodes (including uptime stats) |
+| `POST` | `/heartbeat`    | ✓    | Update node status + used bytes         |
+| `GET`  | `/swarm-stats`  | —    | Aggregate swarm stats (public)          |
+| `GET`  | `/online-count` | —    | Count of currently online nodes (public)|
 
 **Heartbeat body:**
 
@@ -325,17 +326,26 @@ Used by storage nodes (not the uploader client). Authentication is via query par
 
 **Server → Node messages:**
 
-```json
-{ "type": "chunk_relay", "payload": { "chunkId": "...", "data": "<base64>" } }
-{ "type": "chunk_request", "payload": { "chunkId": "...", "requestId": "..." } }
+`chunk_relay` is sent as a **binary WebSocket frame** (avoids the 33% base64 overhead for large shards):
+
+```
+[4 bytes: metadata JSON length, big-endian uint32]
+[metadata JSON bytes]  — { type, fileId, shardIndex, chunkHash, isData, ackNonce }
+[raw encrypted shard bytes]
 ```
 
-**Node → Server messages:**
+All other server→node messages are JSON text frames:
 
 ```json
-{ "type": "chunk_ack", "payload": { "chunkId": "...", "ok": true } }
-{ "type": "chunk_response", "payload": { "requestId": "...", "data": "<base64>" } }
-{ "type": "heartbeat" }
+{ "type": "chunk_request", "payload": { "fileId": "...", "shardIndex": 0, "requestNonce": "..." } }
+```
+
+**Node → Server messages** (all JSON text frames):
+
+```json
+{ "type": "chunk_ack",      "payload": { "fileId": "...", "shardIndex": 0, "ackNonce": "...", "success": true, "chunkHash": "..." } }
+{ "type": "chunk_response", "payload": { "fileId": "...", "shardIndex": 0, "requestNonce": "...", "data": "<base64>", "chunkHash": "..." } }
+{ "type": "heartbeat",      "payload": { "nodeId": "...", "relayToken": "...", "status": "online", "usedBytes": 0, "pledgedBytes": 0 } }
 ```
 
 ---
@@ -746,10 +756,10 @@ pnpm typecheck
 
 | Constraint            | Detail                                                                                                                                                                                                          |
 | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Min nodes for upload  | **3** online nodes required (2 data + 1 parity — beta setting; production will use 6)                                                                                                                           |
+| Min nodes for upload  | **3** online nodes required (2 data + 1 parity — beta; production will use 6)                                                                                                                                   |
 | JWT expiry            | 7 days, no refresh token — users must re-login after expiry                                                                                                                                                     |
-| Chunk size            | Fixed at 1 MB per shard                                                                                                                                                                                         |
-| Max body (production) | 20 MB — set via Traefik buffering middleware                                                                                                                                                                    |
+| Shard size            | `ceil(fileSize / dataShards)` — with 2 data shards a 100 MB file produces two 50 MB shards + one 50 MB parity shard                                                                                             |
+| Max body (production) | **120 MB** — set via Traefik buffering middleware (`maxRequestBodyBytes = 125,829,120`)                                                                                                                          |
 | File sharing          | Shadow copies stored decrypted on server for up to 7 days                                                                                                                                                       |
 | App signing           | Not configured — macOS/Windows will show security warnings on first launch (acceptable for beta)                                                                                                                |
 | App icons             | `assets/icon.ico` (Windows) is present. macOS builds need `assets/icon.icns`; Linux builds need `assets/icon.png` (256×256 min); the tray needs `assets/tray-icon.png` (16×16) — falls back to empty if missing |

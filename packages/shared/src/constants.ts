@@ -1,10 +1,11 @@
 // ─────────────────────────────────────────────
 //  Storage
 // ─────────────────────────────────────────────
-export const CHUNK_SIZE_BYTES = 1 * 1024 * 1024; // 1 MB per shard
-// Beta: reduced shard counts so uploads work with fewer online nodes.
+// Beta: 2 data shards + 1 parity shard. A file is split into 2 equal halves;
+// the parity shard allows recovery if any one of the 3 shards is lost.
+// Requires MIN_NODES_FOR_STORE = 3 online nodes to accept an upload.
 // Restore to 4 data + 2 parity for production.
-export const DEFAULT_DATA_SHARDS = 1;
+export const DEFAULT_DATA_SHARDS = 2;
 export const DEFAULT_PARITY_SHARDS = 1; // tolerate up to 1 missing shard
 export const MIN_NODES_FOR_STORE = DEFAULT_DATA_SHARDS + DEFAULT_PARITY_SHARDS;
 export const BASE_STORAGE_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB free for everyone

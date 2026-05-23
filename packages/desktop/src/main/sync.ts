@@ -554,7 +554,7 @@ export const syncClient = {
 
     const connect = () => {
       isAuthenticated = false;
-      ws = new WebSocketLib(wsUrl);
+      ws = new WebSocketLib(wsUrl, { maxPayload: 120 * 1024 * 1024 }); // allow up to 120 MB binary frames
 
       ws.onopen = () => {
         console.log("[ws] Connected to server — authenticating");
@@ -572,8 +572,53 @@ export const syncClient = {
       };
 
       ws.onmessage = (event) => {
+        const rawData = event.data;
+
+        // ── Binary frame: chunk_relay ──────────────────────────────────────
+        // Layout: [4-byte metadata length (BE uint32)][metadata JSON][raw chunk bytes]
+        // Using binary avoids the 33% base64 overhead and large JSON.parse cost.
+        if (Buffer.isBuffer(rawData)) {
+          try {
+            const metaLen = rawData.readUInt32BE(0);
+            const meta = JSON.parse(rawData.subarray(4, 4 + metaLen).toString("utf8")) as {
+              type: string;
+              fileId: string;
+              shardIndex: number;
+              chunkHash: string;
+              isData: boolean;
+              ackNonce: string;
+            };
+            if (meta.type === "chunk_relay") {
+              const chunkData = rawData.subarray(4 + metaLen);
+              storageManager
+                .writeRawChunk(`${meta.fileId}-${meta.shardIndex}`, chunkData)
+                .then(() => {
+                  ws?.send(
+                    JSON.stringify({
+                      type: "chunk_ack",
+                      payload: { fileId: meta.fileId, shardIndex: meta.shardIndex, ackNonce: meta.ackNonce, success: true, chunkHash: meta.chunkHash },
+                    }),
+                  );
+                })
+                .catch((err) => {
+                  console.error("[ws] Failed to store chunk:", err);
+                  ws?.send(
+                    JSON.stringify({
+                      type: "chunk_ack",
+                      payload: { fileId: meta.fileId, shardIndex: meta.shardIndex, ackNonce: meta.ackNonce, success: false, chunkHash: meta.chunkHash },
+                    }),
+                  );
+                });
+            }
+          } catch (e) {
+            console.error("[ws] Failed to parse binary frame:", e);
+          }
+          return;
+        }
+
+        // ── Text frame: JSON messages ──────────────────────────────────────
         try {
-          const msg = JSON.parse(event.data as string) as { type: string; payload: unknown };
+          const msg = JSON.parse(rawData as string) as { type: string; payload: unknown };
 
           // auth_ack: credentials accepted — mark connected and start heartbeat
           if (msg.type === "auth_ack") {
@@ -659,38 +704,6 @@ export const syncClient = {
         })
         .catch((err) => {
           console.error("[ws] Failed to read chunk:", err);
-        });
-      return;
-    }
-
-    if (msg.type === "chunk_relay") {
-      const { fileId, shardIndex, chunkHash, ackNonce, data } = msg.payload as {
-        fileId: string;
-        shardIndex: number;
-        chunkHash: string;
-        isData: boolean;
-        ackNonce: string;
-        data: string;
-      };
-      const encryptedData = Buffer.from(data, "base64");
-      storageManager
-        .writeRawChunk(`${fileId}-${shardIndex}`, encryptedData)
-        .then(() => {
-          ws?.send(
-            JSON.stringify({
-              type: "chunk_ack",
-              payload: { fileId, shardIndex, ackNonce, success: true, chunkHash },
-            }),
-          );
-        })
-        .catch((err) => {
-          console.error("[ws] Failed to store chunk:", err);
-          ws?.send(
-            JSON.stringify({
-              type: "chunk_ack",
-              payload: { fileId, shardIndex, ackNonce, success: false, chunkHash },
-            }),
-          );
         });
       return;
     }

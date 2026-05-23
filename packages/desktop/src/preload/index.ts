@@ -54,6 +54,16 @@ const api = {
   // System info
   getSystemHostname: () => ipcRenderer.invoke("system:hostname") as Promise<string>,
 
+  // Live swarm-wide statistics (no auth required)
+  getSwarmStats: () =>
+    ipcRenderer.invoke("swarm:stats") as Promise<{
+      onlineNodes: number;
+      totalNodes: number;
+      onlinePledgedBytes: number;
+      totalPledgedBytes: number;
+      usedBytes: number;
+    } | null>,
+
   // Fires when the sync client uploads a file (use to refresh FileManager)
   onSyncChanged: (cb: () => void) => {
     ipcRenderer.on("sync:changed", cb);

@@ -130,4 +130,27 @@ export async function nodeRoutes(fastify: FastifyInstance & { redis: Redis }): P
     });
     return reply.send({ count });
   });
+
+  // GET /api/v1/nodes/swarm-stats — aggregate swarm statistics (public, no auth)
+  fastify.get("/swarm-stats", async (_request, reply) => {
+    const threshold = new Date(Date.now() - NODE_OFFLINE_THRESHOLD_MS);
+    const [onlineAgg, totalAgg] = await Promise.all([
+      prisma.storageNode.aggregate({
+        where: { status: "online", lastSeenAt: { gte: threshold } },
+        _count: { id: true },
+        _sum: { pledgedBytes: true, usedBytes: true },
+      }),
+      prisma.storageNode.aggregate({
+        _count: { id: true },
+        _sum: { pledgedBytes: true },
+      }),
+    ]);
+    return reply.send({
+      onlineNodes: onlineAgg._count.id,
+      totalNodes: totalAgg._count.id,
+      onlinePledgedBytes: Number(onlineAgg._sum.pledgedBytes ?? 0),
+      totalPledgedBytes: Number(totalAgg._sum.pledgedBytes ?? 0),
+      usedBytes: Number(onlineAgg._sum.usedBytes ?? 0),
+    });
+  });
 }

@@ -5,8 +5,11 @@ import { FastifyInstance } from "fastify";
 import { prisma } from "../database.js";
 import { distributionService } from "../services/distribution.js";
 
-/** How long (ms) the server waits for a node to ack a relayed chunk. */
-const CHUNK_ACK_TIMEOUT_MS = 30_000;
+/** How long (ms) the server waits for a node to ack a relayed chunk.
+ * Must cover: server→node WS transfer time + node disk write.
+ * For a 100 MB shard at 10 Mbps home connection: ~80 s transfer + ~5 s write = 85 s.
+ * 3 minutes gives comfortable headroom. */
+const CHUNK_ACK_TIMEOUT_MS = 180_000;
 
 type ChunkFastify = FastifyInstance & {
   nodeConnections: Map<string, WebSocket>;
@@ -105,20 +108,13 @@ export async function chunkRoutes(fastify: ChunkFastify): Promise<void> {
       });
     });
 
-    // Relay the chunk to the node as base64 inside a JSON envelope
-    socket.send(
-      JSON.stringify({
-        type: "chunk_relay",
-        payload: {
-          fileId,
-          shardIndex,
-          chunkHash,
-          isData,
-          ackNonce,
-          data: body.toString("base64"),
-        },
-      }),
-    );
+    // Relay the chunk to the node as a binary WebSocket frame to avoid the
+    // 33% base64 overhead and expensive JSON.stringify/parse of a large string.
+    // Frame layout: [4 bytes: metadata JSON length (big-endian)][metadata JSON][raw chunk bytes]
+    const relayMeta = Buffer.from(JSON.stringify({ type: "chunk_relay", fileId, shardIndex, chunkHash, isData, ackNonce }), "utf8");
+    const lenBuf = Buffer.allocUnsafe(4);
+    lenBuf.writeUInt32BE(relayMeta.length, 0);
+    socket.send(Buffer.concat([lenBuf, relayMeta, body as Buffer]), { binary: true });
 
     const acked = await ackPromise;
     if (!acked) {

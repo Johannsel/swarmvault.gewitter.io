@@ -1,16 +1,18 @@
 import { useState, useEffect } from "react";
-import { LayoutDashboard, FolderOpen, Settings, Trophy } from "lucide-react";
+import { LayoutDashboard, FolderOpen, Settings, Trophy, Info } from "lucide-react";
 import Dashboard from "./components/Dashboard.js";
 import FileManager from "./components/FileManager.js";
 import SettingsPanel from "./components/Settings.js";
 import Rewards from "./components/Rewards.js";
+import InfoPage from "./components/Info.js";
 
-type Tab = "dashboard" | "files" | "rewards" | "settings";
+type Tab = "dashboard" | "files" | "rewards" | "info" | "settings";
 
 const tabs: { id: Tab; label: string; Icon: typeof LayoutDashboard }[] = [
   { id: "dashboard", label: "Dashboard", Icon: LayoutDashboard },
   { id: "files", label: "My Files", Icon: FolderOpen },
   { id: "rewards", label: "Rewards", Icon: Trophy },
+  { id: "info", label: "Swarm Info", Icon: Info },
   { id: "settings", label: "Settings", Icon: Settings },
 ];
 
@@ -87,6 +89,7 @@ export default function App() {
         {activeTab === "dashboard" && <Dashboard />}
         {activeTab === "files" && <FileManager />}
         {activeTab === "rewards" && <Rewards />}
+        {activeTab === "info" && <InfoPage />}
         {activeTab === "settings" && <SettingsPanel />}
       </main>
     </div>

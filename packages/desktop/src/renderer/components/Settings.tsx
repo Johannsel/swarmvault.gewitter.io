@@ -48,6 +48,7 @@ export default function SettingsPanel() {
   const [authLoading, setAuthLoading] = useState(false);
   const [loggedInUser, setLoggedInUser] = useState<{ email: string; username: string } | null>(null);
   const [displayName, setDisplayName] = useState("");
+  const [nodeRegError, setNodeRegError] = useState<string | null>(null);
 
   const reload = async () => {
     const s = (await window.swarmvault.getSettings()) as Settings;
@@ -142,6 +143,7 @@ export default function SettingsPanel() {
 
   const handleRegisterNode = async () => {
     if (!settings) return;
+    setNodeRegError(null);
     try {
       await window.swarmvault.registerNode({
         displayName: displayName.trim() || "My PC",
@@ -151,7 +153,7 @@ export default function SettingsPanel() {
       const updated = (await window.swarmvault.getSettings()) as Settings;
       setSettings(updated);
     } catch (err) {
-      console.error("Node registration failed:", err);
+      setNodeRegError(err instanceof Error ? err.message : "Registration failed — check your connection and try again.");
     }
   };
 
@@ -291,6 +293,7 @@ export default function SettingsPanel() {
             <button onClick={handleRegisterNode} disabled={!displayName.trim()} className="w-full py-2.5 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-sm font-medium transition-colors">
               Register This PC as a Node
             </button>
+            {nodeRegError && <div className="text-xs text-red-400 bg-red-900/20 rounded-lg px-3 py-2">{nodeRegError}</div>}
           </div>
         ) : (
           <div className="text-xs text-emerald-400 flex items-center gap-1.5">
