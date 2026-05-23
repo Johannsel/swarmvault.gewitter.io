@@ -18,10 +18,6 @@ COPY packages/server ./packages/server
 
 # Generate Prisma client BEFORE tsc so types are available during compilation
 RUN pnpm --filter @swarmvault/server prisma:generate
-# pnpm stores the generated client in its virtual store — find it and copy to a
-# known real path so Docker can COPY it across stages without following symlinks
-RUN find /app/node_modules/.pnpm -maxdepth 6 -type d -name ".prisma" | head -1 | \
-    xargs -I{} cp -r {} /app/.prisma-client
 # Build shared first, then server
 RUN pnpm --filter @swarmvault/shared build
 RUN pnpm --filter @swarmvault/server build
@@ -42,11 +38,13 @@ COPY packages/server/package.json ./packages/server/
 
 RUN pnpm install --frozen-lockfile --prod --ignore-scripts
 
-# Copy compiled output and Prisma client
+# Copy Prisma schema so we can generate the client in the correct pnpm virtual store location
+COPY packages/server/prisma ./packages/server/prisma
+RUN pnpm --filter @swarmvault/server exec prisma generate
+
+# Copy compiled output
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
 COPY --from=builder /app/packages/server/dist ./packages/server/dist
-COPY --from=builder /app/.prisma-client ./packages/server/node_modules/.prisma
-COPY packages/server/prisma ./packages/server/prisma
 
 WORKDIR /app/packages/server
 
