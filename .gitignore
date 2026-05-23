@@ -28,5 +28,17 @@ pnpm-debug.log*
 # ── Electron / desktop ────────────────────────────────────────────────────────
 packages/desktop/.swarmvault/
 
+# Electron-builder output (raw build artefacts — use releases/ for distribution)
+packages/desktop/release/
+packages/desktop/out/
+
+# Installer binaries inside releases/ — track folder structure (.gitkeep) only
+releases/**/*.exe
+releases/**/*.dmg
+releases/**/*.blockmap
+releases/**/*.AppImage
+releases/**/*.deb
+releases/**/*.zip
+
 # ── Prisma generated client ───────────────────────────────────────────────────
 packages/server/node_modules/.prisma/

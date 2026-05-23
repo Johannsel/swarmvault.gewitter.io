@@ -18,6 +18,7 @@ SwarmVault is an **Electron desktop app** that automatically syncs a folder acro
 - [Database Schema](#database-schema)
 - [Quick Start (Development)](#quick-start-development)
 - [Production Deployment](#production-deployment)
+- [Building Client Applications](#building-client-applications)
 - [Security Model](#security-model)
 - [Contributing](#contributing)
 - [Known Constraints](#known-constraints)
@@ -397,12 +398,20 @@ docker compose up -d
 ### 3 — Configure the server
 
 ```bash
-cp packages/server/.env.example packages/server/.env
-# Edit .env:
-#   DATABASE_URL=postgresql://swarmvault:swarmvault@localhost:5432/swarmvault
-#   REDIS_URL=redis://localhost:6379
-#   JWT_SECRET=<at least 32 random chars>
+# packages/server/.env.prod.example documents every variable — for dev, create a minimal .env:
+cat > packages/server/.env <<'EOF'
+NODE_ENV=development
+PORT=3000
+HOST=0.0.0.0
+DATABASE_URL=postgresql://swarmvault:swarmvault@localhost:5432/swarmvault
+REDIS_URL=redis://localhost:6379
+JWT_SECRET=$(openssl rand -base64 48)
+JWT_EXPIRY=7d
+CHUNK_TEMP_DIR=/tmp/swarmvault-chunks
+EOF
 ```
+
+> `packages/server/.env.prod.example` describes every variable and the production secret injection strategy.
 
 ### 4 — Run migrations
 
@@ -508,14 +517,162 @@ Traefik auto-discovers the container labels and routes `https://api.swarmvault.g
 docker compose -f docker-compose.prod.yml logs -f server
 
 # Run a migration manually
-docker compose -f docker-compose.prod.yml exec server npx prisma migrate deploy
+docker compose -f docker-compose.prod.yml exec server pnpm exec prisma migrate deploy
 
 # Open Prisma studio remotely (tunnel port 5555)
-docker compose -f docker-compose.prod.yml exec server npx prisma studio --port 5555
+docker compose -f docker-compose.prod.yml exec server pnpm exec prisma studio --port 5555
 
 # Stop everything
 docker compose -f docker-compose.prod.yml down
 ```
+
+---
+
+## Building Client Applications
+
+The desktop client is built with **electron-builder**. The output lands in `packages/desktop/release/`; copy the resulting installers to `releases/latest/` (see [Releases Folder](#releases-folder)) for distribution.
+
+### Prerequisites
+
+| Requirement  | Version | Notes                                                                                            |
+| ------------ | ------- | ------------------------------------------------------------------------------------------------ |
+| Node.js      | ≥ 20    | `nvm use` reads `.nvmrc`                                                                         |
+| pnpm         | ≥ 9     | `npm install -g pnpm`                                                                            |
+| macOS host   | —       | **Required** for `.dmg` / `.icns` builds (Apple toolchain)                                       |
+| Windows host | —       | Recommended for NSIS installer signing; cross-compile from macOS/Linux works for unsigned builds |
+
+### Required icon assets
+
+Place these files in `packages/desktop/assets/` before building:
+
+| File            | Size                   | Platform                    |
+| --------------- | ---------------------- | --------------------------- |
+| `icon.ico`      | ≥ 256×256 (multi-size) | Windows ✅ already present  |
+| `icon.icns`     | 512×512 (retina)       | macOS                       |
+| `icon.png`      | 256×256 minimum        | Linux                       |
+| `tray-icon.png` | 16×16                  | All platforms (system tray) |
+
+> Generate `.icns` from a 1024×1024 PNG:
+>
+> ```bash
+> mkdir icon.iconset
+> sips -z 16 16 icon.png --out icon.iconset/icon_16x16.png
+> sips -z 32 32 icon.png --out icon.iconset/icon_16x16@2x.png
+> sips -z 32 32 icon.png --out icon.iconset/icon_32x32.png
+> sips -z 64 64 icon.png --out icon.iconset/icon_32x32@2x.png
+> sips -z 128 128 icon.png --out icon.iconset/icon_128x128.png
+> sips -z 256 256 icon.png --out icon.iconset/icon_128x128@2x.png
+> sips -z 256 256 icon.png --out icon.iconset/icon_256x256.png
+> sips -z 512 512 icon.png --out icon.iconset/icon_256x256@2x.png
+> sips -z 512 512 icon.png --out icon.iconset/icon_512x512.png
+> sips -z 1024 1024 icon.png --out icon.iconset/icon_512x512@2x.png
+> iconutil -c icns icon.iconset -o packages/desktop/assets/icon.icns
+> ```
+
+### 1 — Install and build dependencies
+
+Run from the **monorepo root**:
+
+```bash
+pnpm install
+pnpm --filter @swarmvault/shared build
+pnpm --filter @swarmvault/desktop build
+```
+
+This compiles the shared TypeScript library and then runs `tsc` + Vite for the desktop renderer and main process.
+
+### 2 — Package the installer
+
+Run from `packages/desktop/`:
+
+```bash
+cd packages/desktop
+```
+
+#### macOS (DMG — Intel + Apple Silicon)
+
+```bash
+# Both architectures (requires macOS host)
+npx electron-builder --mac --x64 --arm64
+
+# Intel only
+npx electron-builder --mac --x64
+
+# Apple Silicon only
+npx electron-builder --mac --arm64
+```
+
+Outputs:
+
+- `release/SwarmVault-<version>.dmg` (Intel)
+- `release/SwarmVault-<version>-arm64.dmg` (Apple Silicon)
+
+#### Windows (NSIS installer)
+
+```bash
+# 64-bit only (recommended)
+npx electron-builder --win --x64
+
+# 32-bit only
+npx electron-builder --win --ia32
+
+# Both architectures
+npx electron-builder --win --x64 --ia32
+```
+
+Outputs:
+
+- `release/SwarmVault Setup <version>.exe` (NSIS installer with optional install directory)
+
+> Cross-compiling Windows installers from macOS or Linux works for **unsigned** builds.
+> Code-signed builds require either a Windows host with an EV certificate or a cloud signing service.
+
+#### Linux (AppImage + .deb)
+
+```bash
+npx electron-builder --linux
+```
+
+Outputs:
+
+- `release/SwarmVault-<version>.AppImage`
+- `release/SwarmVault-<version>.deb`
+
+### 3 — Copy to releases folder
+
+```bash
+# From monorepo root
+cp packages/desktop/release/*.exe releases/latest/windows/ 2>/dev/null || true
+cp packages/desktop/release/*.dmg releases/latest/macos/ 2>/dev/null || true
+cp packages/desktop/release/*.AppImage packages/desktop/release/*.deb releases/latest/linux/ 2>/dev/null || true
+```
+
+### One-liner: build all platforms (macOS host)
+
+```bash
+# From monorepo root
+pnpm install && \
+pnpm --filter @swarmvault/shared build && \
+pnpm --filter @swarmvault/desktop build && \
+cd packages/desktop && \
+npx electron-builder --mac --win --linux
+```
+
+---
+
+## Releases Folder
+
+Pre-built installers are kept in `releases/latest/` for distribution:
+
+```
+releases/
+└── latest/
+    ├── windows/   # SwarmVault Setup <version>.exe
+    ├── macos/     # SwarmVault-<version>.dmg, SwarmVault-<version>-arm64.dmg
+    └── linux/     # SwarmVault-<version>.AppImage, SwarmVault-<version>.deb
+```
+
+For automated distribution via GitHub Releases, configure `publish` in `packages/desktop/electron-builder.yml` with your repository details.
 
 ---
 
@@ -587,15 +744,15 @@ pnpm typecheck
 
 ## Known Constraints
 
-| Constraint            | Detail                                                                                                                                                       |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Min nodes for upload  | **3** online nodes required (2 data + 1 parity — beta setting; production will use 6)                                                                        |
-| JWT expiry            | 7 days, no refresh token — users must re-login after expiry                                                                                                  |
-| Chunk size            | Fixed at 1 MB per shard                                                                                                                                      |
-| Max body (production) | 20 MB — set via Traefik buffering middleware                                                                                                                 |
-| File sharing          | Shadow copies stored decrypted on server for up to 7 days                                                                                                    |
-| App signing           | Not configured — macOS/Windows will show security warnings on first launch (acceptable for beta)                                                             |
-| App icons             | Placeholder icons; collaborators building installers need `assets/icon.icns`, `assets/icon.ico`, `assets/icon.png` (256×256), `assets/tray-icon.png` (16×16) |
+| Constraint            | Detail                                                                                                                                                                                                          |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Min nodes for upload  | **3** online nodes required (2 data + 1 parity — beta setting; production will use 6)                                                                                                                           |
+| JWT expiry            | 7 days, no refresh token — users must re-login after expiry                                                                                                                                                     |
+| Chunk size            | Fixed at 1 MB per shard                                                                                                                                                                                         |
+| Max body (production) | 20 MB — set via Traefik buffering middleware                                                                                                                                                                    |
+| File sharing          | Shadow copies stored decrypted on server for up to 7 days                                                                                                                                                       |
+| App signing           | Not configured — macOS/Windows will show security warnings on first launch (acceptable for beta)                                                                                                                |
+| App icons             | `assets/icon.ico` (Windows) is present. macOS builds need `assets/icon.icns`; Linux builds need `assets/icon.png` (256×256 min); the tray needs `assets/tray-icon.png` (16×16) — falls back to empty if missing |
 
 ---
 

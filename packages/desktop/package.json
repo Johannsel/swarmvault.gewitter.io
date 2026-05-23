@@ -1,6 +1,12 @@
 {
   "name": "@swarmvault/desktop",
   "version": "0.1.0",
+  "description": "Distributed peer-to-peer encrypted cloud storage desktop client",
+  "homepage": "https://swarmvault.gewitter.io",
+  "author": {
+    "name": "Johannes Hagmann",
+    "email": "hallo@bitlichtgewitter.de"
+  },
   "private": true,
   "main": "./dist/main/index.js",
   "scripts": {

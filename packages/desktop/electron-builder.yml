@@ -2,6 +2,10 @@ appId: io.gewitter.swarmvault
 productName: SwarmVault
 copyright: Copyright © 2025 SwarmVault
 
+# Override default artifact naming — prevents scoped npm package name (@swarmvault/desktop)
+# from being interpreted as a subdirectory path by fpm during .deb packaging.
+artifactName: ${productName}-${version}-${arch}.${ext}
+
 directories:
   output: release
 
