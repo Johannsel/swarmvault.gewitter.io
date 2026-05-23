@@ -27,6 +27,7 @@ export default function SettingsPanel() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [pledgedGb, setPledgedGb] = useState(10);
   const [saved, setSaved] = useState(false);
+  const [serverUrlError, setServerUrlError] = useState<string | null>(null);
   const [storageStats, setStorageStats] = useState<{
     availableDiskBytes: number | null;
     sufficient: boolean;
@@ -114,6 +115,13 @@ export default function SettingsPanel() {
 
   const handleSave = async () => {
     if (!settings) return;
+    try {
+      new URL(settings.serverUrl);
+      setServerUrlError(null);
+    } catch {
+      setServerUrlError("Enter a valid URL including protocol, e.g. https://api.example.com");
+      return;
+    }
     await window.swarmvault.updateSettings({
       pledgedBytes: gbToBytes(pledgedGb),
       syncDir: settings.syncDir,
@@ -240,28 +248,29 @@ export default function SettingsPanel() {
           </div>
         </div>
 
-        {!settings.nodeId ? (
-          <div className="space-y-2">
-            <label className="text-xs text-slate-400">
-              Pledged Storage: <span className="text-white font-medium">{pledgedGb} GB</span>
-              {storageStats?.availableDiskBytes != null && <span className="ml-2 text-slate-500">· {Math.floor(storageStats.availableDiskBytes / 1024 ** 3)} GB free on disk</span>}
-              <span className="ml-2 text-slate-600">· ~{(pledgedGb / 24).toFixed(3)} cr/day at full uptime (swarm)</span>
-            </label>
-            <input type="range" min={5} max={2000} step={5} value={pledgedGb} onChange={(e) => setPledgedGb(Number(e.target.value))} className="w-full accent-violet-500" />
-            <div className="flex justify-between text-xs text-slate-500">
-              <span>5 GB</span>
-              <span>2 TB</span>
-            </div>
-            {storageStats?.availableDiskBytes != null && pledgedGb * 1024 ** 3 > storageStats.availableDiskBytes && (
-              <div className="flex items-start gap-2 text-xs px-3 py-2 rounded-lg bg-amber-900/30 text-amber-400">
-                <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
-                <span>Only {Math.floor(storageStats.availableDiskBytes / 1024 ** 3)} GB is free on disk. Your pledge exceeds available space — reduce it or free up disk space to avoid write failures.</span>
-              </div>
-            )}
-            <button onClick={handleRegisterNode} className="w-full py-2.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-sm font-medium transition-colors">
-              Register This PC as a Node
-            </button>
+        <div className="space-y-2">
+          <label className="text-xs text-slate-400">
+            Pledged Storage: <span className="text-white font-medium">{pledgedGb} GB</span>
+            {storageStats?.availableDiskBytes != null && <span className="ml-2 text-slate-500">· {Math.floor(storageStats.availableDiskBytes / 1024 ** 3)} GB free on disk</span>}
+            <span className="ml-2 text-slate-600">· ~{(pledgedGb / 24).toFixed(3)} cr/day at full uptime (swarm)</span>
+          </label>
+          <input type="range" min={5} max={2000} step={5} value={pledgedGb} onChange={(e) => setPledgedGb(Number(e.target.value))} className="w-full accent-violet-500" />
+          <div className="flex justify-between text-xs text-slate-500">
+            <span>5 GB</span>
+            <span>2 TB</span>
           </div>
+          {storageStats?.availableDiskBytes != null && pledgedGb * 1024 ** 3 > storageStats.availableDiskBytes && (
+            <div className="flex items-start gap-2 text-xs px-3 py-2 rounded-lg bg-amber-900/30 text-amber-400">
+              <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
+              <span>Only {Math.floor(storageStats.availableDiskBytes / 1024 ** 3)} GB is free on disk. Your pledge exceeds available space — reduce it or free up disk space to avoid write failures.</span>
+            </div>
+          )}
+        </div>
+
+        {!settings.nodeId ? (
+          <button onClick={handleRegisterNode} className="w-full py-2.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-sm font-medium transition-colors">
+            Register This PC as a Node
+          </button>
         ) : (
           <div className="text-xs text-emerald-400 flex items-center gap-1.5">
             ✓ Node registered <code className="text-slate-300">{settings.nodeId?.slice(0, 8)}…</code>
@@ -310,9 +319,18 @@ export default function SettingsPanel() {
           <input
             type="text"
             value={settings.serverUrl}
-            onChange={(e) => setSettings((s) => (s ? { ...s, serverUrl: e.target.value } : s))}
-            className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-violet-500"
+            onChange={(e) => {
+              setServerUrlError(null);
+              setSettings((s) => (s ? { ...s, serverUrl: e.target.value } : s));
+            }}
+            className={`w-full bg-slate-700 border rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-violet-500 ${serverUrlError ? "border-red-500" : "border-slate-600"}`}
           />
+          {serverUrlError && (
+            <div className="flex items-start gap-1.5 text-xs text-red-400">
+              <AlertTriangle size={11} className="shrink-0 mt-0.5" />
+              {serverUrlError}
+            </div>
+          )}
           <div className="flex items-start gap-1.5 text-xs text-slate-500">
             <Info size={11} className="shrink-0 mt-0.5" />
             Leave as default for the public SwarmVault network. Only change if connecting to a private or self-hosted server.

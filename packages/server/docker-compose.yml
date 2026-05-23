@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   # Dev Container target — long-running shell so VS Code can attach
   server:

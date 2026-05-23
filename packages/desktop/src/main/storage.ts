@@ -76,6 +76,13 @@ export const storageManager = {
   },
 
   updateSettings(partial: Partial<Settings>): void {
+    if (partial.serverUrl !== undefined) {
+      try {
+        new URL(partial.serverUrl);
+      } catch {
+        throw new Error(`Invalid server URL: "${partial.serverUrl}". Must include protocol, e.g. https://api.example.com`);
+      }
+    }
     for (const [k, v] of Object.entries(partial)) {
       store.set(k as keyof Settings, v);
     }
