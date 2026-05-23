@@ -56,6 +56,9 @@ export default function Dashboard() {
 
   useEffect(() => {
     load();
+    // Poll current state immediately — avoids missing the push event that fires
+    // before the renderer is ready to receive it (race on first WS auth).
+    void window.swarmvault.getSyncConnected().then((c) => setConnected(c));
     const timer = setInterval(load, 15_000);
     const unsub = window.swarmvault.onSyncStatus((status) => setConnected(status.connected));
     return () => {

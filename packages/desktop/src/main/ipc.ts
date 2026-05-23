@@ -35,8 +35,10 @@ export const ipcHandlers = {
         body: JSON.stringify({ email, password }),
       });
       if (!res.ok) {
-        const err = (await res.json()) as { error?: string };
-        throw new Error(err.error ?? "Login failed");
+        const text = await res.text();
+        let msg = "Login failed";
+        try { msg = (JSON.parse(text) as { error?: string }).error ?? msg; } catch { /* not JSON */ }
+        throw new Error(msg);
       }
       const data = (await res.json()) as { token: string; user: { id: string; email: string; username: string } };
       storageManager.updateSettings({ authToken: data.token });
@@ -55,13 +57,17 @@ export const ipcHandlers = {
         body: JSON.stringify({ email, username, password }),
       });
       if (!res.ok) {
-        const err = (await res.json()) as { error?: string; details?: { fieldErrors?: Record<string, string[]> } };
-        const fieldErrs = err.details?.fieldErrors;
-        const msg = fieldErrs
-          ? Object.entries(fieldErrs)
-              .map(([f, msgs]) => `${f}: ${msgs.join(", ")}`)
-              .join(" | ")
-          : (err.error ?? "Registration failed");
+        const text = await res.text();
+        let msg = "Registration failed";
+        try {
+          const err = JSON.parse(text) as { error?: string; details?: { fieldErrors?: Record<string, string[]> } };
+          const fieldErrs = err.details?.fieldErrors;
+          msg = fieldErrs
+            ? Object.entries(fieldErrs)
+                .map(([f, msgs]) => `${f}: ${msgs.join(", ")}`)
+                .join(" | ")
+            : (err.error ?? msg);
+        } catch { /* not JSON */ }
         throw new Error(msg);
       }
       const data = (await res.json()) as { token: string; user: { id: string; email: string; username: string } };
@@ -233,9 +239,11 @@ export const ipcHandlers = {
 
     ipcMain.handle("rewards:get", async () => {
       const settings = storageManager.getSettings();
+      if (!settings.authToken) return null;
       const res = await fetch(`${settings.serverUrl}/api/v1/rewards`, {
         headers: { Authorization: `Bearer ${settings.authToken}` },
       });
+      if (!res.ok) return null;
       return res.json();
     });
 
@@ -346,6 +354,10 @@ export const ipcHandlers = {
     });
 
     // ── Push events to renderer ───────────────────────────────────────────────
+
+    // Direct poll — renderer calls this on mount to get the current state
+    // without relying on timing-sensitive push events.
+    ipcMain.handle("sync:isConnected", () => syncClient.isConnected());
 
     // Forward real-time WS connection status changes to the renderer
     syncClient.setStatusChangeCallback((connected) => {

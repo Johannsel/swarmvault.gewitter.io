@@ -48,14 +48,19 @@ const api = {
   getShareStatus: (fileId: string) => ipcRenderer.invoke("files:shareStatus", { fileId }) as Promise<{ token: string; shareUrl: string; expiresAt: string } | null>,
   unshareFile: (fileId: string) => ipcRenderer.invoke("files:unshare", { fileId }) as Promise<{ ok: boolean }>,
 
+  // Direct poll — get current WS connection state without waiting for an event
+  getSyncConnected: () => ipcRenderer.invoke("sync:isConnected") as Promise<boolean>,
+
   // Event subscriptions
   onSyncStatus: (cb: (status: { connected: boolean }) => void) => {
-    ipcRenderer.on("sync:status", (_event, status) => cb(status));
-    return () => ipcRenderer.removeAllListeners("sync:status");
+    const listener = (_event: Electron.IpcRendererEvent, status: { connected: boolean }) => cb(status);
+    ipcRenderer.on("sync:status", listener);
+    return () => ipcRenderer.removeListener("sync:status", listener);
   },
   onAuthChanged: (cb: (state: { loggedIn: boolean; user: { email: string; username: string } | null }) => void) => {
-    ipcRenderer.on("auth:changed", (_event, state) => cb(state));
-    return () => ipcRenderer.removeAllListeners("auth:changed");
+    const listener = (_event: Electron.IpcRendererEvent, state: { loggedIn: boolean; user: { email: string; username: string } | null }) => cb(state);
+    ipcRenderer.on("auth:changed", listener);
+    return () => ipcRenderer.removeListener("auth:changed", listener);
   },
 
   // Signal renderer is ready
