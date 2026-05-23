@@ -270,10 +270,12 @@ async function redistributeOverCapacityChunks(sourceNodeId: string, app: typeof 
         app.pendingChunkResponses.delete(requestKey);
         resolve(data);
       });
-      sourceSocket.send(JSON.stringify({
-        type: "chunk_request",
-        payload: { fileId: chunk.fileId, shardIndex: chunk.shardIndex, requestNonce },
-      }));
+      sourceSocket.send(
+        JSON.stringify({
+          type: "chunk_request",
+          payload: { fileId: chunk.fileId, shardIndex: chunk.shardIndex, requestNonce },
+        }),
+      );
     });
 
     if (!chunkData) {
@@ -295,17 +297,19 @@ async function redistributeOverCapacityChunks(sourceNodeId: string, app: typeof 
         app.pendingAcks.delete(ackKey);
         resolve(ok);
       });
-      targetSocket.send(JSON.stringify({
-        type: "chunk_relay",
-        payload: {
-          fileId: chunk.fileId,
-          shardIndex: chunk.shardIndex,
-          chunkHash: chunk.chunkHash,
-          isData: chunk.isData,
-          ackNonce,
-          data: chunkData.toString("base64"),
-        },
-      }));
+      targetSocket.send(
+        JSON.stringify({
+          type: "chunk_relay",
+          payload: {
+            fileId: chunk.fileId,
+            shardIndex: chunk.shardIndex,
+            chunkHash: chunk.chunkHash,
+            isData: chunk.isData,
+            ackNonce,
+            data: chunkData.toString("base64"),
+          },
+        }),
+      );
     });
 
     if (!acked) {
@@ -335,10 +339,12 @@ async function redistributeOverCapacityChunks(sourceNodeId: string, app: typeof 
 
     // 5. Tell source node to delete its copy
     if (sourceSocket.readyState === 1) {
-      sourceSocket.send(JSON.stringify({
-        type: "chunk_delete",
-        payload: { fileId: chunk.fileId, shardIndex: chunk.shardIndex },
-      }));
+      sourceSocket.send(
+        JSON.stringify({
+          type: "chunk_delete",
+          payload: { fileId: chunk.fileId, shardIndex: chunk.shardIndex },
+        }),
+      );
     }
 
     app.log.info(`Redistributed chunk ${chunk.id} from node ${sourceNodeId} → ${target.id}`);
