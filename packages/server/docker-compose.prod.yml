@@ -42,8 +42,13 @@ services:
       - "traefik.http.routers.swarmvault-ws.rule=Host(`api.swarmvault.gewitter.io`) && PathPrefix(`/ws`)"
       - "traefik.http.routers.swarmvault-ws.entrypoints=websecure"
       - "traefik.http.routers.swarmvault-ws.tls.certresolver=leresolver"
+      - "traefik.http.routers.swarmvault-ws.service=swarmvault-api"
       # ── Shared backend ─────────────────────────────────────────────────────
       - "traefik.http.services.swarmvault-api.loadbalancer.server.port=3000"
+      # Disable Traefik's forwarding timeouts for long-lived WebSocket connections
+      - "traefik.http.serversTransports.swarmvault-notimeout.forwardingTimeouts.responseHeaderTimeout=0"
+      - "traefik.http.serversTransports.swarmvault-notimeout.forwardingTimeouts.readIdleTimeout=0"
+      - "traefik.http.services.swarmvault-api.loadbalancer.serversTransport=swarmvault-notimeout"
 
   postgres:
     image: postgres:16-alpine

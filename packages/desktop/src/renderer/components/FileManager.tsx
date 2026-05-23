@@ -100,6 +100,8 @@ export default function FileManager() {
 
   useEffect(() => {
     load();
+    const timer = setInterval(load, 30_000);
+    return () => clearInterval(timer);
   }, []);
   useEffect(() => {
     if (tab === "trash") loadTrash();

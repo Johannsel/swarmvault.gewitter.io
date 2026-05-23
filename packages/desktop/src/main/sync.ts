@@ -570,6 +570,8 @@ export const syncClient = {
       };
 
       ws.onclose = (event) => {
+        const code = (event as { code?: number }).code;
+        const reason = (event as { reason?: string }).reason ?? "";
         if (heartbeatTimer) clearInterval(heartbeatTimer);
         if (authTimeoutTimer) {
           clearTimeout(authTimeoutTimer);
@@ -580,13 +582,13 @@ export const syncClient = {
 
         // Code 4001: server explicitly rejected credentials.
         // Clear the stale node registration so the user can re-register.
-        if ((event as { code?: number }).code === 4001) {
+        if (code === 4001) {
           console.warn("[ws] Server rejected node credentials — clearing stale node registration");
           storageManager.clearNodeCredentials();
           return; // stop reconnecting
         }
 
-        console.log("[ws] Disconnected — reconnecting in 10s");
+        console.log(`[ws] Disconnected (code: ${code}${reason ? ", reason: " + reason : ""}) — reconnecting in 10s`);
         setTimeout(connect, 10_000);
       };
 

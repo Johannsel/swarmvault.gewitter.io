@@ -15,8 +15,14 @@ export const ipcHandlers = {
     });
 
     ipcMain.handle("settings:update", (_event, partial: Record<string, unknown>) => {
+      const before = storageManager.getSettings();
       storageManager.updateSettings(partial);
-      return storageManager.getSettings();
+      const after = storageManager.getSettings();
+      // If the sync folder changed, restart the watcher on the new path
+      if (after.syncDir !== before.syncDir && after.authToken && after.nodeId) {
+        syncClient.startWatcher(after.syncDir);
+      }
+      return after;
     });
 
     // ── Authentication ────────────────────────────────────────────────────────
