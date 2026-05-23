@@ -49,10 +49,6 @@ services:
       - "traefik.http.middlewares.swarmvault-bodylimit.buffering.maxRequestBodyBytes=20971520"
       # ── Shared backend ─────────────────────────────────────────────────────
       - "traefik.http.services.swarmvault-api.loadbalancer.server.port=3000"
-      # Disable Traefik's forwarding timeouts for long-lived WebSocket connections
-      - "traefik.http.serversTransports.swarmvault-notimeout.forwardingTimeouts.responseHeaderTimeout=0"
-      - "traefik.http.serversTransports.swarmvault-notimeout.forwardingTimeouts.readIdleTimeout=0"
-      - "traefik.http.services.swarmvault-api.loadbalancer.serversTransport=swarmvault-notimeout"
 
   postgres:
     image: postgres:16-alpine
