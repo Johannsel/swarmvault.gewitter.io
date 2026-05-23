@@ -401,7 +401,10 @@ export default function FileManager() {
                 Cancel
               </button>
               <button
-                onClick={() => { void confirmDelete(pendingDelete); setPendingDelete(null); }}
+                onClick={() => {
+                  void confirmDelete(pendingDelete);
+                  setPendingDelete(null);
+                }}
                 className="text-xs px-3 py-1.5 rounded-lg bg-red-700 hover:bg-red-600 transition-colors">
                 Move to Trash
               </button>
@@ -421,7 +424,10 @@ export default function FileManager() {
                 Cancel
               </button>
               <button
-                onClick={() => { void confirmPurge(pendingPurge); setPendingPurge(null); }}
+                onClick={() => {
+                  void confirmPurge(pendingPurge);
+                  setPendingPurge(null);
+                }}
                 className="text-xs px-3 py-1.5 rounded-lg bg-red-700 hover:bg-red-600 text-red-100 transition-colors">
                 Delete Forever
               </button>

@@ -42,11 +42,15 @@ export const ipcHandlers = {
 
     ipcMain.handle("auth:login", async (_event, { email, password }: { email: string; password: string }) => {
       const settings = storageManager.getSettings();
-      const res = await fetchWithTimeout(`${settings.serverUrl}/api/v1/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      }, 15_000);
+      const res = await fetchWithTimeout(
+        `${settings.serverUrl}/api/v1/auth/login`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
+        },
+        15_000,
+      );
       if (!res.ok) {
         const text = await res.text();
         let msg = "Login failed";
@@ -68,11 +72,15 @@ export const ipcHandlers = {
 
     ipcMain.handle("auth:register", async (_event, { email, username, password }: { email: string; username: string; password: string }) => {
       const settings = storageManager.getSettings();
-      const res = await fetchWithTimeout(`${settings.serverUrl}/api/v1/auth/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, username, password }),
-      }, 15_000);
+      const res = await fetchWithTimeout(
+        `${settings.serverUrl}/api/v1/auth/register`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, username, password }),
+        },
+        15_000,
+      );
       if (!res.ok) {
         const text = await res.text();
         let msg = "Registration failed";
@@ -119,14 +127,18 @@ export const ipcHandlers = {
         const settings = storageManager.getSettings();
         if (!settings.authToken) throw new Error("Not authenticated");
 
-        const res = await fetchWithTimeout(`${settings.serverUrl}/api/v1/nodes`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${settings.authToken}`,
+        const res = await fetchWithTimeout(
+          `${settings.serverUrl}/api/v1/nodes`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${settings.authToken}`,
+            },
+            body: JSON.stringify({ displayName, tier, pledgedBytes }),
           },
-          body: JSON.stringify({ displayName, tier, pledgedBytes }),
-        }, 15_000);
+          15_000,
+        );
 
         if (!res.ok) throw new Error(await res.text());
         const { node } = (await res.json()) as { node: { id: string; relayToken: string } };
@@ -254,7 +266,10 @@ export const ipcHandlers = {
         method: "DELETE",
         headers: { Authorization: `Bearer ${settings.authToken}` },
       });
-      if (res.status === 401) { mainWindow?.webContents.send("auth:changed", { loggedIn: false, user: null }); throw new Error("Session expired"); }
+      if (res.status === 401) {
+        mainWindow?.webContents.send("auth:changed", { loggedIn: false, user: null });
+        throw new Error("Session expired");
+      }
       if (!res.ok && res.status !== 404) throw new Error(await res.text());
       return { ok: true };
     });
@@ -347,14 +362,18 @@ export const ipcHandlers = {
       const plaintext = await syncClient.downloadFileToBuffer(fileId, settings);
 
       // Upload shadow copy to server (5 min timeout — large files can take a while)
-      const res = await fetchWithTimeout(`${settings.serverUrl}/api/v1/files/${fileId}/share`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${settings.authToken}`,
-          "Content-Type": "application/octet-stream",
+      const res = await fetchWithTimeout(
+        `${settings.serverUrl}/api/v1/files/${fileId}/share`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${settings.authToken}`,
+            "Content-Type": "application/octet-stream",
+          },
+          body: plaintext,
         },
-        body: plaintext,
-      }, 300_000);
+        300_000,
+      );
       if (!res.ok) throw new Error(await res.text());
       return res.json() as Promise<{ token: string; shareUrl: string; expiresAt: string }>;
     });
