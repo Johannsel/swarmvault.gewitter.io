@@ -32,17 +32,21 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=traefik"
-      # ── HTTP API router (with body-size limit middleware) ──────────────────
-      - "traefik.http.routers.swarmvault-api.rule=Host(`api.swarmvault.gewitter.io`) && !PathPrefix(`/ws`)"
-      - "traefik.http.routers.swarmvault-api.entrypoints=websecure"
-      - "traefik.http.routers.swarmvault-api.tls.certresolver=leresolver"
-      - "traefik.http.routers.swarmvault-api.middlewares=swarmvault-bodylimit"
-      - "traefik.http.middlewares.swarmvault-bodylimit.buffering.maxRequestBodyBytes=20971520"
-      # ── WebSocket router (NO buffering middleware — it breaks WS upgrade) ──
+      # ── WebSocket router — higher priority so it wins over the API router ──
+      # (Using explicit priorities avoids the !PathPrefix negation operator,
+      #  which behaves inconsistently across Traefik versions)
       - "traefik.http.routers.swarmvault-ws.rule=Host(`api.swarmvault.gewitter.io`) && PathPrefix(`/ws`)"
       - "traefik.http.routers.swarmvault-ws.entrypoints=websecure"
       - "traefik.http.routers.swarmvault-ws.tls.certresolver=leresolver"
       - "traefik.http.routers.swarmvault-ws.service=swarmvault-api"
+      - "traefik.http.routers.swarmvault-ws.priority=10"
+      # ── HTTP API router (with body-size limit middleware, lower priority) ──
+      - "traefik.http.routers.swarmvault-api.rule=Host(`api.swarmvault.gewitter.io`)"
+      - "traefik.http.routers.swarmvault-api.entrypoints=websecure"
+      - "traefik.http.routers.swarmvault-api.tls.certresolver=leresolver"
+      - "traefik.http.routers.swarmvault-api.middlewares=swarmvault-bodylimit"
+      - "traefik.http.routers.swarmvault-api.priority=1"
+      - "traefik.http.middlewares.swarmvault-bodylimit.buffering.maxRequestBodyBytes=20971520"
       # ── Shared backend ─────────────────────────────────────────────────────
       - "traefik.http.services.swarmvault-api.loadbalancer.server.port=3000"
       # Disable Traefik's forwarding timeouts for long-lived WebSocket connections

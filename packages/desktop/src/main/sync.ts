@@ -592,7 +592,7 @@ export const syncClient = {
         setTimeout(connect, 10_000);
       };
 
-      ws.onerror = (err) => console.error("[ws] Error:", err);
+      ws.onerror = (err) => console.error("[ws] Error:", (err as { message?: string }).message ?? err);
     };
 
     connect();
