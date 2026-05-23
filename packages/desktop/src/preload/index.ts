@@ -60,6 +60,13 @@ const api = {
     return () => ipcRenderer.removeListener("sync:changed", cb);
   },
 
+  // Fires when a sync upload fails — passes the error message
+  onUploadError: (cb: (message: string) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, message: string) => cb(message);
+    ipcRenderer.on("sync:upload-error", listener);
+    return () => ipcRenderer.removeListener("sync:upload-error", listener);
+  },
+
   // Event subscriptions
   onSyncStatus: (cb: (status: { connected: boolean }) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, status: { connected: boolean }) => cb(status);

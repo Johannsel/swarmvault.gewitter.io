@@ -81,6 +81,7 @@ export default function FileManager() {
   const [trashLoading, setTrashLoading] = useState(false);
   const [restoringId, setRestoringId] = useState<string | null>(null);
   const [purgingId, setPurgingId] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -108,6 +109,15 @@ export default function FileManager() {
   // Immediately refresh when the sync client finishes uploading a file
   useEffect(() => {
     const unsub = window.swarmvault.onSyncChanged(() => load());
+    return unsub;
+  }, []);
+  // Show a banner when the sync client fails to upload a file
+  useEffect(() => {
+    const unsub = window.swarmvault.onUploadError((msg: string) => {
+      setUploadError(msg);
+      // Auto-dismiss after 12 seconds
+      setTimeout(() => setUploadError(null), 12_000);
+    });
     return unsub;
   }, []);
   useEffect(() => {
@@ -229,6 +239,14 @@ export default function FileManager() {
 
       {actionResult && <div className={`text-xs px-4 py-2 rounded-lg ${actionResult.ok ? "bg-emerald-900/30 text-emerald-400" : "bg-red-900/30 text-red-400"}`}>{actionResult.msg}</div>}
       {shareError && <div className="text-xs px-4 py-2 rounded-lg bg-red-900/30 text-red-400">✗ {shareError}</div>}
+      {uploadError && (
+        <div className="flex items-center justify-between gap-3 px-4 py-2 rounded-lg bg-red-900/30 border border-red-700/40 text-red-300 text-xs">
+          <span>⚠ Sync error: {uploadError}</span>
+          <button onClick={() => setUploadError(null)} className="text-red-400 hover:text-red-200 shrink-0">
+            <X size={13} />
+          </button>
+        </div>
+      )}
 
       {/* Over-quota banner */}
       {quota?.overQuota && (

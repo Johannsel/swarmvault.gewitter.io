@@ -46,7 +46,9 @@ services:
       - "traefik.http.routers.swarmvault-api.tls.certresolver=leresolver"
       - "traefik.http.routers.swarmvault-api.middlewares=swarmvault-bodylimit"
       - "traefik.http.routers.swarmvault-api.priority=1"
-      - "traefik.http.middlewares.swarmvault-bodylimit.buffering.maxRequestBodyBytes=20971520"
+      # 120 MB — must exceed the chunk upload cap (100 MB file → ~100 MB shard + encryption overhead).
+      # Only applies to the swarmvault-api router; the WS router has no body limit.
+      - "traefik.http.middlewares.swarmvault-bodylimit.buffering.maxRequestBodyBytes=125829120"
       # ── Shared backend ─────────────────────────────────────────────────────
       - "traefik.http.services.swarmvault-api.loadbalancer.server.port=3000"
 

@@ -420,6 +420,11 @@ export const ipcHandlers = {
       mainWindow?.webContents.send("sync:changed");
     });
 
+    // Surface upload errors to the renderer so the user sees them in the UI
+    syncClient.setUploadErrorCallback((message: string) => {
+      mainWindow?.webContents.send("sync:upload-error", message);
+    });
+
     ipcMain.on("renderer:ready", () => {
       // Send the actual current connection state (not hardcoded true)
       mainWindow?.webContents.send("sync:status", { connected: syncClient.isConnected() });

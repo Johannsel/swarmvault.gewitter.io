@@ -1,6 +1,7 @@
 import type { Redis } from "ioredis";
 import { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../database.js";
 import { distributionService } from "../services/distribution.js";
 
@@ -55,21 +56,53 @@ export async function fileRoutes(fastify: FastifyInstance & { redis: Redis }): P
 
     const totalShards = body.data.totalShards + body.data.parityShards;
 
-    const file = await prisma.swarmFile.create({
-      data: {
-        ownerId: payload.sub,
-        name: body.data.name,
-        path: body.data.path,
-        mimeType: body.data.mimeType,
-        sizeBytes: body.data.sizeBytes,
-        // tier is auto-assigned by the server based on node uptimes
-        contentHash: body.data.contentHash,
-        totalShards: body.data.totalShards,
-        parityShards: body.data.parityShards,
-        encryptedMasterKey: body.data.encryptedMasterKey,
-        status: "pending",
-      },
-    });
+    // If a previous upload attempt left a "pending" record at the same path
+    // (e.g. chunk relay timed out), reuse that record so we don't hit the
+    // @@unique([ownerId, path]) constraint with a second POST.
+    let file: { id: string };
+    try {
+      file = await prisma.swarmFile.create({
+        data: {
+          ownerId: payload.sub,
+          name: body.data.name,
+          path: body.data.path,
+          mimeType: body.data.mimeType,
+          sizeBytes: body.data.sizeBytes,
+          // tier is auto-assigned by the server based on node uptimes
+          contentHash: body.data.contentHash,
+          totalShards: body.data.totalShards,
+          parityShards: body.data.parityShards,
+          encryptedMasterKey: body.data.encryptedMasterKey,
+          status: "pending",
+        },
+        select: { id: true },
+      });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+        // Unique constraint — find and reset the existing pending record
+        const existing = await prisma.swarmFile.findFirst({
+          where: { ownerId: payload.sub, path: body.data.path, deletedAt: null },
+          select: { id: true },
+        });
+        if (!existing) return reply.status(500).send({ error: "Unexpected conflict" });
+        file = await prisma.swarmFile.update({
+          where: { id: existing.id },
+          data: {
+            name: body.data.name,
+            mimeType: body.data.mimeType,
+            sizeBytes: body.data.sizeBytes,
+            contentHash: body.data.contentHash,
+            totalShards: body.data.totalShards,
+            parityShards: body.data.parityShards,
+            encryptedMasterKey: body.data.encryptedMasterKey,
+            status: "pending",
+          },
+          select: { id: true },
+        });
+      } else {
+        throw e;
+      }
+    }
 
     // Try to assign nodes immediately.
     // If there aren't enough online nodes yet, queue the file and return 202 —

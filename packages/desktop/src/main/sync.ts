@@ -50,6 +50,7 @@ let ws: WebSocketLib | null = null;
 let isAuthenticated = false;
 let statusChangeCallback: ((connected: boolean) => void) | null = null;
 let filesChangedCallback: (() => void) | null = null;
+let uploadErrorCallback: ((message: string) => void) | null = null;
 
 /** Paths currently being written by the sync client — suppress watcher events. */
 const downloadingPaths = new Set<string>();
@@ -137,15 +138,20 @@ export const syncClient = {
       const localHash = sha256(data);
       const entry = serverManifest.get(virtualPath);
 
-      if (entry?.contentHash === localHash) {
-        // Already in sync — nothing to do
+      if (entry?.contentHash === localHash && entry?.status === "available") {
+        // Already fully uploaded and available — nothing to do
         return;
       }
 
+      // If status is "pending" (previous upload left orphaned shards) we fall
+      // through and re-upload using the existing file ID so the server resets
+      // the record instead of hitting the unique-path constraint.
       console.log(`[sync] Uploading: ${virtualPath}`);
-      await this.uploadFile(filePath, virtualPath, settings, entry?.id);
+      await this.uploadFile(filePath, virtualPath, settings, entry?.status === "pending" ? entry.id : undefined);
     } catch (err) {
-      console.error(`[sync] Upload failed for ${virtualPath}:`, err);
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[sync] Upload failed for ${virtualPath}:`, msg);
+      uploadErrorCallback?.(`Upload failed for ${virtualPath}: ${msg}`);
     }
   },
 
@@ -164,7 +170,7 @@ export const syncClient = {
       const localHash = sha256(data);
       const entry = serverManifest.get(virtualPath);
 
-      if (entry?.contentHash === localHash) return; // no change
+      if (entry?.contentHash === localHash && entry?.status === "available") return; // no change
 
       console.log(`[sync] Re-uploading changed file: ${virtualPath}`);
       const fileId = await this.uploadFile(filePath, virtualPath, settings, entry?.id);
@@ -172,7 +178,9 @@ export const syncClient = {
       // If there was an active share, refresh the shadow with the new plaintext.
       if (fileId) await this.refreshShareShadow(fileId, settings);
     } catch (err) {
-      console.error(`[sync] Re-upload failed for ${virtualPath}:`, err);
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[sync] Re-upload failed for ${virtualPath}:`, msg);
+      uploadErrorCallback?.(`Re-upload failed for ${virtualPath}: ${msg}`);
     }
   },
 
@@ -262,7 +270,14 @@ export const syncClient = {
    * Returns the file's vault ID (useful for post-upload share refresh).
    */
   async uploadFile(filePath: string, virtualPath: string, settings: ReturnType<typeof storageManager.getSettings>, existingFileId?: string): Promise<string | null> {
+    console.log(`[sync] uploadFile start: ${virtualPath} → ${settings.serverUrl} (existingId=${existingFileId ?? "new"})`);
     const data = await fs.readFile(filePath);
+
+    const MAX_FILE_BYTES = 100 * 1024 * 1024; // 100 MB
+    if (data.length > MAX_FILE_BYTES) {
+      throw new Error(`File too large (${(data.length / 1024 / 1024).toFixed(1)} MB). Maximum supported size is 100 MB.`);
+    }
+
     const contentHash = sha256(data);
     const mimeType = "application/octet-stream";
 
@@ -294,9 +309,10 @@ export const syncClient = {
       body: JSON.stringify(bodyPayload),
     });
 
+    console.log(`[sync] File registration response: ${regRes.status}`);
     if (!regRes.ok && regRes.status !== 202) {
       const err = await regRes.json().catch(() => ({}));
-      throw new Error(`Server rejected file: ${JSON.stringify(err)}`);
+      throw new Error(`Server rejected file (HTTP ${regRes.status}): ${JSON.stringify(err)}`);
     }
 
     const regData = (await regRes.json()) as {
@@ -307,11 +323,13 @@ export const syncClient = {
 
     let shardAssignment = regData.shardAssignment;
     if (regData.queued || !shardAssignment) {
-      console.log(`[sync] Queued — polling for shard assignment`);
+      console.log(`[sync] Queued (not enough online nodes) — polling for shard assignment for ${virtualPath}`);
       shardAssignment = await this.pollForAssignment(regData.file.id, settings.serverUrl, settings.authToken!);
       if (!shardAssignment) {
-        throw new Error(`Timed out waiting for shard assignment for ${virtualPath}`);
+        throw new Error(`Timed out waiting for shard assignment — no online nodes available for ${virtualPath}`);
       }
+    } else {
+      console.log(`[sync] Got shard assignment for ${virtualPath}: ${shardAssignment.length} shard(s)`);
     }
 
     for (let i = 0; i < totalShards; i++) {
@@ -322,6 +340,7 @@ export const syncClient = {
       const chunkHash = sha256(serialized);
       const targetNode = shardAssignment[i % shardAssignment.length]!;
 
+      console.log(`[sync] Uploading shard ${i}/${totalShards - 1} (${serialized.length} bytes) → node ${targetNode.nodeId}`);
       const chunkRes = await fetch(`${settings.serverUrl}/api/v1/chunks`, {
         method: "POST",
         headers: {
@@ -335,10 +354,11 @@ export const syncClient = {
         },
         body: serialized,
       });
+      console.log(`[sync] Shard ${i} response: ${chunkRes.status}`);
 
       if (!chunkRes.ok) {
         const errBody = await chunkRes.json().catch(() => ({}));
-        throw new Error(`Shard ${i} upload failed: ${JSON.stringify(errBody)}`);
+        throw new Error(`Shard ${i} upload failed (HTTP ${chunkRes.status}): ${JSON.stringify(errBody)}`);
       }
     }
 
@@ -759,5 +779,9 @@ export const syncClient = {
 
   setFilesChangedCallback(cb: () => void): void {
     filesChangedCallback = cb;
+  },
+
+  setUploadErrorCallback(cb: (message: string) => void): void {
+    uploadErrorCallback = cb;
   },
 };
